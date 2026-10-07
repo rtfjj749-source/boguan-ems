@@ -3000,6 +3000,7 @@ function setupModals() {
 
     document.getElementById('inputShiftMemberName').value = targetMem.name;
     updateModalQuotaPreview(targetMem);
+    if (typeof handleManualPeriodInput === 'function') handleManualPeriodInput(true);
     modalClaim.classList.add('open');
     updateClaimModalSlotMeter();
   }
