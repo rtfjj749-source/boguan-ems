@@ -2774,155 +2774,93 @@ function setupModals() {
     }
   }
 
-  // 建立 07:00 ~ 23:00 彈性自訂時段選單項目
-  function populateFlexibleTimeSelects() {
-    const selStart = document.getElementById('inputShiftStartTime');
-    const selEnd = document.getElementById('inputShiftEndTime');
-    if (!selStart || !selEnd) return;
+  // 簡約手動輸入起訖時間核心邏輯
+  const inStart = document.getElementById('inputShiftStartTime');
+  const inEnd = document.getElementById('inputShiftEndTime');
+  const hiddenPeriod = document.getElementById('inputShiftPeriod');
+  const badgeDuration = document.getElementById('shiftDurationBadge');
+  const textSummary = document.getElementById('shiftPeriodSummaryText');
+  const badgeLive = document.getElementById('modalSlotLiveStatusBadge');
+  const submitBtn = document.getElementById('btnSubmitClaimShift');
 
-    selStart.innerHTML = '';
-    selEnd.innerHTML = '';
-
-    // 07:00 ~ 22:30 (每 30 分鐘一刻)
-    for (let m = 7 * 60; m <= 22 * 60 + 30; m += 30) {
-      const hStr = String(Math.floor(m / 60)).padStart(2, '0');
-      const mStr = String(m % 60).padStart(2, '0');
-      const val = `${hStr}:${mStr}`;
-      const opt = document.createElement('option');
-      opt.value = val;
-      opt.textContent = val;
-      selStart.appendChild(opt);
+  function normalizeTimeStr(tStr) {
+    if (!tStr) return '';
+    const s = String(tStr).trim().replace(/\s+/g, '');
+    if (s.includes(':')) {
+      const [h, m] = s.split(':').map(Number);
+      if (!isNaN(h)) {
+        return `${String(h).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}`;
+      }
     }
-
-    // 07:30 ~ 23:00 (每 30 分鐘一刻)
-    for (let m = 7 * 60 + 30; m <= 23 * 60; m += 30) {
-      const hStr = String(Math.floor(m / 60)).padStart(2, '0');
-      const mStr = String(m % 60).padStart(2, '0');
-      const val = `${hStr}:${mStr}`;
-      const opt = document.createElement('option');
-      opt.value = val;
-      opt.textContent = val;
-      selEnd.appendChild(opt);
+    if (/^\d{4}$/.test(s)) {
+      return `${s.slice(0, 2)}:${s.slice(2, 4)}`;
     }
-
-    selStart.value = '18:00';
-    selEnd.value = '23:00';
-    updateDurationBadge();
+    if (/^\d{1,2}$/.test(s)) {
+      return `${String(Number(s)).padStart(2, '0')}:00`;
+    }
+    return s;
   }
 
-  // 手動輸入與選單雙向同步更新處理器
-  const inputPeriod = document.getElementById('inputShiftPeriod');
-  const periodHint = document.getElementById('periodInputHint');
+  function updateFlexibleTimeInputs(autoFormat = false) {
+    if (!inStart || !inEnd) return;
 
-  function handleManualPeriodInput(isFinal = false) {
-    if (!inputPeriod) return;
-    const raw = inputPeriod.value.trim();
-    const parsed = parseTimePeriod(raw);
+    if (autoFormat) {
+      if (inStart.value) inStart.value = normalizeTimeStr(inStart.value);
+      if (inEnd.value) inEnd.value = normalizeTimeStr(inEnd.value);
+    }
+
+    const sVal = inStart.value.trim();
+    const eVal = inEnd.value.trim();
+    const parsed = parseTimePeriod(`${sVal}-${eVal}`);
 
     if (parsed.valid) {
       const dur = (parsed.endMin - parsed.startMin) / 60;
-      const badge = document.getElementById('shiftDurationBadge');
-      if (badge) {
-        badge.textContent = `⏱️ 協勤時長：${dur.toFixed(1)} 小時`;
-      }
-      if (periodHint) {
-        periodHint.innerHTML = `✅ 格式正確 (${parsed.formatted}，共 ${dur.toFixed(1)}h)`;
-        periodHint.style.color = '#34d399';
-      }
+      if (badgeDuration) badgeDuration.textContent = `${dur.toFixed(1)} 小時`;
+      if (textSummary) textSummary.textContent = `(${parsed.formatted})`;
+      if (hiddenPeriod) hiddenPeriod.value = parsed.formatted;
 
-      // 若為失焦或選單觸發且與輸入不一致，標準化顯示
-      if (isFinal && parsed.formatted !== raw) {
-        inputPeriod.value = parsed.formatted;
-      }
-
-      // 同步輔助下拉選單
-      const selStart = document.getElementById('inputShiftStartTime');
-      const selEnd = document.getElementById('inputShiftEndTime');
-      const sh = String(Math.floor(parsed.startMin / 60)).padStart(2, '0');
-      const sm = String(parsed.startMin % 60).padStart(2, '0');
-      const eh = String(Math.floor(parsed.endMin / 60)).padStart(2, '0');
-      const em = String(parsed.endMin % 60).padStart(2, '0');
-      if (selStart) selStart.value = `${sh}:${sm}`;
-      if (selEnd) selEnd.value = `${eh}:${em}`;
-
-      // 同步高亮快捷標籤
-      document.querySelectorAll('.btn-preset-period').forEach(btn => {
-        const bStart = btn.getAttribute('data-start');
-        const bEnd = btn.getAttribute('data-end');
-        if (bStart === `${sh}:${sm}` && bEnd === `${eh}:${em}`) {
-          btn.classList.add('active');
-        } else {
-          btn.classList.remove('active');
+      if (parsed.startMin < 7 * 60 || parsed.endMin > 23 * 60) {
+        if (badgeLive) {
+          badgeLive.className = 'capacity-pill full';
+          badgeLive.textContent = '限 07:00~23:00';
         }
-      });
-
-      updateClaimModalSlotMeter();
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.style.opacity = '0.5';
+        }
+      } else {
+        updateClaimModalSlotMeter();
+      }
     } else {
-      if (periodHint) {
-        if (!raw) {
-          periodHint.innerHTML = `✍️ 請手動輸入時段，例如 09-15`;
-          periodHint.style.color = 'var(--text-muted)';
-        } else {
-          periodHint.innerHTML = `⚠️ 格式解析中（例如直接輸入 09-15、07-15、09:30-15:00）`;
-          periodHint.style.color = '#fbbf24';
-        }
+      if (badgeDuration) badgeDuration.textContent = `請輸入正確時間`;
+      if (textSummary) textSummary.textContent = ``;
+      if (badgeLive) {
+        badgeLive.className = 'capacity-pill full';
+        badgeLive.textContent = '時間不符';
+      }
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.style.opacity = '0.5';
       }
     }
   }
 
-  // 同步更新時數標籤與 inputShiftPeriod
-  function updateDurationBadge() {
-    const selStart = document.getElementById('inputShiftStartTime');
-    const selEnd = document.getElementById('inputShiftEndTime');
-    if (!selStart || !selEnd || !inputPeriod) return;
-
-    let sVal = selStart.value;
-    let eVal = selEnd.value;
-    const tStart = parseTimePeriod(sVal + '-23:00').startMin;
-    const tEnd = parseTimePeriod('07:00-' + eVal).endMin;
-
-    if (tEnd <= tStart) {
-      const safeEndMin = Math.min(23 * 60, tStart + 60);
-      const safeH = String(Math.floor(safeEndMin / 60)).padStart(2, '0');
-      const safeM = String(safeEndMin % 60).padStart(2, '0');
-      selEnd.value = `${safeH}:${safeM}`;
-      eVal = selEnd.value;
-    }
-
-    inputPeriod.value = `${sVal}-${eVal}`;
-    handleManualPeriodInput(true);
-  }
-
-  // 提供全域同步設定自訂時段函式 (支援 09-15 等任意字串)
+  // 全域時段設定工具
   window.syncFlexiblePeriodInputs = function(start, end) {
-    if (end) {
-      if (inputPeriod) inputPeriod.value = `${start}-${end}`;
-    } else if (start) {
-      if (inputPeriod) inputPeriod.value = start;
-    }
-    handleManualPeriodInput(true);
+    if (inStart && start) inStart.value = normalizeTimeStr(start);
+    if (inEnd && end) inEnd.value = normalizeTimeStr(end);
+    updateFlexibleTimeInputs(true);
   };
 
-  // 監聽手動直接文字輸入事件
-  inputPeriod?.addEventListener('input', () => handleManualPeriodInput(false));
-  inputPeriod?.addEventListener('blur', () => handleManualPeriodInput(true));
-  inputPeriod?.addEventListener('change', () => handleManualPeriodInput(true));
+  inStart?.addEventListener('input', () => updateFlexibleTimeInputs(false));
+  inStart?.addEventListener('blur', () => updateFlexibleTimeInputs(true));
+  inEnd?.addEventListener('input', () => updateFlexibleTimeInputs(false));
+  inEnd?.addEventListener('blur', () => updateFlexibleTimeInputs(true));
 
-  // 監聽下拉選單變更
-  document.getElementById('inputShiftStartTime')?.addEventListener('change', updateDurationBadge);
-  document.getElementById('inputShiftEndTime')?.addEventListener('change', updateDurationBadge);
-
-  // 監聽快速熱門彈性時段快捷鍵 (例如 09-15, 09-13, 07-15, 17-22 等)
-  document.querySelectorAll('.btn-preset-period').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const s = btn.getAttribute('data-start');
-      const e = btn.getAttribute('data-end');
-      window.syncFlexiblePeriodInputs(s, e);
-    });
-  });
-
-  // 初始化彈性時段選單
-  populateFlexibleTimeSelects();
+  // 預設填入 09:00 與 15:00
+  if (inStart && !inStart.value) inStart.value = '09:00';
+  if (inEnd && !inEnd.value) inEnd.value = '15:00';
+  updateFlexibleTimeInputs(true);
 
   // 監聽勤務類別變更 (連動補定訓警語與預設值)
   const selectCat = document.getElementById('inputShiftCategory');
@@ -2939,10 +2877,10 @@ function setupModals() {
       if (alertMakeup) alertMakeup.style.display = 'none';
       if (selectType) selectType.value = val.includes('值班') ? '幹部值班' : '自排班';
     }
-    updateClaimModalSlotMeter();
+    updateFlexibleTimeInputs(true);
   });
 
-  document.getElementById('inputShiftDate')?.addEventListener('change', updateClaimModalSlotMeter);
+  document.getElementById('inputShiftDate')?.addEventListener('change', () => updateFlexibleTimeInputs(false));
 
   // 監聽警消指派隊員選單變更
   document.getElementById('selectShiftMemberAdmin')?.addEventListener('change', (e) => {
@@ -3000,7 +2938,7 @@ function setupModals() {
 
     document.getElementById('inputShiftMemberName').value = targetMem.name;
     updateModalQuotaPreview(targetMem);
-    if (typeof handleManualPeriodInput === 'function') handleManualPeriodInput(true);
+    if (typeof updateFlexibleTimeInputs === 'function') updateFlexibleTimeInputs(true);
     modalClaim.classList.add('open');
     updateClaimModalSlotMeter();
   }
