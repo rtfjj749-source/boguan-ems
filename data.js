@@ -17,16 +17,16 @@ export const INITIAL_MEMBERS = [
 ];
 
 export const INITIAL_ATTENDANCE = [
-  { id: 'att-1', memberId: 'm1', memberName: '謝易庭', date: '115-10-01', signIn: '18:00', signOut: '23:00', hours: 5.0, dispatches: 2, patients: 2, note: '91車自排班協勤' },
+  { id: 'att-1', memberId: 'm1', memberName: '謝易庭', date: '115-10-01', signIn: '18:00', signOut: '23:00', hours: 5.0, dispatches: 2, patients: 2, note: '自排班救護協勤 (隊上待命)' },
   { id: 'att-2', memberId: 'm2', memberName: '林振傑', date: '115-10-02', signIn: '07:00', signOut: '18:00', hours: 11.0, dispatches: 4, patients: 3, note: '全日救護協勤 (TP專責支援)' },
   { id: 'att-3', memberId: 'm6', memberName: '周思瑩', date: '115-10-03', signIn: '08:00', signOut: '15:00', hours: 7.0, dispatches: 3, patients: 3, note: '假日早班協勤' },
   { id: 'att-4', memberId: 'm4', memberName: '楊雅晶', date: '115-10-06', signIn: '18:00', signOut: '23:00', hours: 5.0, dispatches: 1, patients: 1, note: '夜間協勤' },
   { id: 'att-5', memberId: 'm5', memberName: '張鎔堤', date: '115-10-06', signIn: '11:00', signOut: '23:00', hours: 12.0, dispatches: 5, patients: 4, note: '假日跨班協勤' },
   { id: 'att-6', memberId: 'm3', memberName: '張宥安', date: '115-10-04', signIn: '14:00', signOut: '18:00', hours: 4.0, dispatches: 1, patients: 1, note: '補定訓值班' },
   { id: 'att-7', memberId: 'm7', memberName: '彭凱琳', date: '115-10-08', signIn: '13:00', signOut: '20:00', hours: 7.0, dispatches: 3, patients: 2, note: '幹部值班協勤' },
-  { id: 'att-8', memberId: 'm1', memberName: '謝易庭', date: '115-10-05', signIn: '18:00', signOut: '23:00', hours: 5.0, dispatches: 2, patients: 2, note: '91車夜間' },
+  { id: 'att-8', memberId: 'm1', memberName: '謝易庭', date: '115-10-05', signIn: '18:00', signOut: '23:00', hours: 5.0, dispatches: 2, patients: 2, note: '夜間救護協勤 (隊上待命)' },
   { id: 'att-9', memberId: 'm10', memberName: '洪銘聰', date: '115-10-08', signIn: '13:00', signOut: '20:00', hours: 7.0, dispatches: 2, patients: 2, note: '白班協勤' },
-  { id: 'att-10', memberId: 'm1', memberName: '謝易庭', date: '115-10-07', signIn: '18:00', signOut: '23:00', hours: 5.0, dispatches: 3, patients: 3, note: '自排班' }
+  { id: 'att-10', memberId: 'm1', memberName: '謝易庭', date: '115-10-07', signIn: '18:00', signOut: '23:00', hours: 5.0, dispatches: 3, patients: 3, note: '自排班救護協勤' }
 ];
 
 export const INITIAL_DISPATCHES = [

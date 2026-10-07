@@ -1266,18 +1266,6 @@ body {
   color: #e9d5ff;
 }
 
-.cal-shift-chip.chip-91 {
-  background: rgba(2, 132, 199, 0.25);
-  border: 1px solid rgba(56, 189, 248, 0.35);
-  color: #bae6fd;
-}
-
-.cal-shift-chip.chip-92 {
-  background: rgba(249, 115, 22, 0.25);
-  border: 1px solid rgba(251, 146, 60, 0.35);
-  color: #fed7aa;
-}
-
 .cal-shift-chip.chip-vacant {
   background: rgba(239, 68, 68, 0.2);
   border: 1px dashed rgba(239, 68, 68, 0.6);

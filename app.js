@@ -23,14 +23,22 @@ class Store {
 }
 
 let members = Store.get('members', INITIAL_MEMBERS);
-let attendance = Store.get('attendance', INITIAL_ATTENDANCE);
+let attendance = Store.get('attendance', INITIAL_ATTENDANCE).map(a => {
+  if (a.note && (a.note.includes('91車') || a.note.includes('92車'))) {
+    return { ...a, note: a.note.replace(/9[12]車/g, '救護協勤') };
+  }
+  return a;
+});
+Store.set('attendance', attendance);
 let dispatches = Store.get('dispatches', INITIAL_DISPATCHES);
 let shifts = Store.get('shifts', INITIAL_SHIFTS).map(s => {
-  if (s.vehicle === '博館91' || s.vehicle === '博館92') {
-    return { ...s, vehicle: '救護協勤' };
+  let v = s.vehicle;
+  if (!v || v === '博館91' || v === '博館92' || v.includes('91') || v.includes('92')) {
+    v = '救護協勤';
   }
-  return s;
+  return { ...s, vehicle: v };
 });
+Store.set('shifts', shifts);
 let currentMemberId = Store.get('currentMemberId', 'm1');
 let activeDuty = Store.get('activeDuty', null); // { memberId, startTime: timestamp, dateStr }
 
@@ -81,19 +89,24 @@ async function syncFromSupabase() {
   if (!supabaseClient) return;
   try {
     const { data: remoteShifts, error: sErr } = await supabaseClient.from('shifts').select('*');
-    if (!sErr && remoteShifts && remoteShifts.length > 0) {
-      shifts = remoteShifts.map(s => ({
-        id: s.id,
-        date: s.shift_date,
-        day: s.day_num,
-        dayOfWeek: s.day_of_week,
-        vehicle: s.vehicle,
-        period: s.period,
-        memberName: s.member_name || '',
-        shiftType: s.shift_type,
-        status: s.status,
-        isMakeupTraining: !!s.is_makeup_training
-      }));
+      shifts = remoteShifts.map(s => {
+        let v = s.vehicle;
+        if (!v || v === '博館91' || v === '博館92' || v.includes('91') || v.includes('92')) {
+          v = '救護協勤';
+        }
+        return {
+          id: s.id,
+          date: s.shift_date,
+          day: s.day_num,
+          dayOfWeek: s.day_of_week,
+          vehicle: v,
+          period: s.period,
+          memberName: s.member_name || '',
+          shiftType: s.shift_type,
+          status: s.status,
+          isMakeupTraining: !!s.is_makeup_training
+        };
+      });
       Store.set('shifts', shifts);
       renderSchedule();
     }
@@ -320,7 +333,7 @@ function renderDispatchList() {
   filtered.forEach(d => {
     const card = document.createElement('div');
     card.className = 'dispatch-card';
-    const vehicleClass = d.vehicle.includes('91') ? 'v91' : 'v92';
+    const vehicleClass = d.vehicle.includes('91') ? 'v91' : (d.vehicle.includes('92') ? 'v92' : 'v-ems');
 
     const tagsHtml = d.treatments.map(t => {
       const isSpecial = ['CPR', 'AED', '12導程心電圖', '靜脈注射'].includes(t);
@@ -549,7 +562,7 @@ function renderVisualCalendar() {
       const text = isVac ? `⚠️ 缺 ${vLabel} ${s.period}` : `${vLabel} ${s.memberName} ${s.period}`;
       
       chipsHtml += `
-        <div class="cal-shift-chip ${chipClass} ${isMine ? 'is-mine' : ''}" title="${s.vehicle} ${s.period} ${s.memberName || '缺協勤'}">
+        <div class="cal-shift-chip ${chipClass} ${isMine ? 'is-mine' : ''}" title="${vLabel} ${s.period} ${s.memberName || '缺協勤'}">
           ${text}
         </div>
       `;
@@ -656,7 +669,7 @@ function validateShiftBooking(targetMember, date, vehicle, period, shiftType, ig
   if (currentFuture.length >= 3 && !isOfficerOverride) {
     return {
       ok: false,
-      reason: `⚠️【預約額度已達上限】\n每位同仁每次預約上限最多 3 班（含跨月）！\n您目前已有 ${currentFuture.length} 班未協勤班次：\n${currentFuture.map(s => `• ${s.date} (${s.vehicle} ${s.period})`).join('\n')}\n\n需待協勤完畢一班後，方可再往後填寫一班！`
+      reason: `⚠️【預約額度已達上限】\n每位同仁每次預約上限最多 3 班（含跨月）！\n您目前已有 ${currentFuture.length} 班未協勤班次：\n${currentFuture.map(s => `• ${s.date} (${s.vehicle.includes('值班') ? s.vehicle : '救護協勤'} ${s.period})`).join('\n')}\n\n需待協勤完畢一班後，方可再往後填寫一班！`
     };
   }
 
@@ -711,9 +724,10 @@ function validateShiftBooking(targetMember, date, vehicle, period, shiftType, ig
   // (C) 個人防重複檢驗：避免同仁自己同一時段排兩班
   const mySelfOverlap = overlappingShifts.find(s => s.memberName === targetMember.name);
   if (mySelfOverlap) {
+    const vName = mySelfOverlap.vehicle.includes('值班') ? mySelfOverlap.vehicle : '救護待命';
     return {
       ok: false,
-      reason: `⚠️【時段衝突】\n您在該時段已有預約班次：${mySelfOverlap.vehicle} (${mySelfOverlap.period})！\n請勿同一時段重複登記。`
+      reason: `⚠️【時段衝突】\n您在該時段已有預約班次：${vName} (${mySelfOverlap.period})！\n請勿同一時段重複登記。`
     };
   }
 
@@ -748,8 +762,9 @@ function cancelShift(shiftId) {
       Store.set('members', members);
     }
   } else {
+    const vDisplay = shift.vehicle && shift.vehicle.includes('值班') ? shift.vehicle : '救護協勤 (隊上待命)';
     const confirmNormal = confirm(
-      `確定要於雲端取消 ${shift.date} (${shift.vehicle} ${shift.period}) 的協勤預約嗎？\n\n取消後將釋出此名額供其他同仁認領，並退回您的 1 班預約額度。`
+      `確定要於雲端取消 ${shift.date} (${vDisplay} ${shift.period}) 的協勤預約嗎？\n\n取消後將釋出此名額供其他同仁認領，並退回您的 1 班預約額度。`
     );
     if (!confirmNormal) return;
   }
@@ -1062,7 +1077,8 @@ function openDayDetailModal(day) {
       Store.set('shifts', shifts);
       openDayDetailModal(day);
       updateAllViews();
-      showToast(`成功認領 10月${dayStr}日 (${shift.vehicle} ${shift.period})！`, '🎉');
+      const vDisplay = shift.vehicle && shift.vehicle.includes('值班') ? shift.vehicle : '救護待命';
+      showToast(`成功認領 10月${dayStr}日 (${vDisplay} ${shift.period})！`, '🎉');
       playFeedbackSound('success');
     });
   });
@@ -1179,7 +1195,8 @@ function renderScheduleListView() {
       shift.status = '已排班';
       Store.set('shifts', shifts);
       updateAllViews();
-      showToast(`成功認領 ${shift.date} (${shift.vehicle} ${shift.period})！`, '🎉');
+      const vDisplay = shift.vehicle && shift.vehicle.includes('值班') ? shift.vehicle : '救護待命';
+      showToast(`成功認領 ${shift.date} (${vDisplay} ${shift.period})！`, '🎉');
       playFeedbackSound('success');
     });
   });
@@ -1214,7 +1231,7 @@ function setupCalendarControls() {
     renderScheduleListView();
   });
 
-  // 篩選車號
+  // 篩選勤務類別
   document.getElementById('calFilterVehicle')?.addEventListener('change', () => {
     renderVisualCalendar();
     renderScheduleListView();

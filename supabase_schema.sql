@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS public.shifts (
     shift_date VARCHAR(20) NOT NULL,         -- '115-10-07'
     day_num INT,                             -- 7
     day_of_week VARCHAR(10),                 -- '三'
-    vehicle VARCHAR(30) NOT NULL,            -- '博館91', '博館92', '值班台', '值班台 (補定訓)'
+    vehicle VARCHAR(30) NOT NULL,            -- '救護協勤', '值班台', '值班台 (補定訓)' (無 91/92 車別限制，隊上待命隨車出勤)
     period VARCHAR(50) NOT NULL,             -- '18:00-23:00', '18:00-22:00'
     member_name VARCHAR(50),                 -- '謝易庭' 或空 (缺協勤)
     shift_type VARCHAR(30) DEFAULT '自排班',  -- '自排班', '固定班', '幹部值班', '補定訓'
