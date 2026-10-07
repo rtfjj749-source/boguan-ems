@@ -1457,5 +1457,382 @@ body {
   border-color: #ef4444;
 }
 
+/* ==============================================================================
+   7. 先填先站位與突發狀況取消專用樣式 (First-Come First-Served & Emergency Cancel)
+   ============================================================================== */
+
+/* 席次釋出動態即時橫幅 */
+.released-feed-box {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(245, 158, 11, 0.12));
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1.25rem;
+  margin-bottom: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.released-feed-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: #fca5a5;
+}
+
+.released-feed-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-size: 0.82rem;
+  color: #e2e8f0;
+}
+
+.btn-quick-claim {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0.3rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
+}
+
+.btn-quick-claim:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.6);
+}
+
+/* 單日排班詳情 - 時段席位卡片 */
+.slot-group-card {
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+  padding: 1rem 1.2rem;
+  margin-bottom: 1rem;
+  transition: var(--transition);
+}
+
+.slot-group-card:hover {
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
+.slot-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 0.65rem;
+  margin-bottom: 0.85rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.slot-period-tag {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.slot-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  padding: 0.2rem 0;
+}
+
+/* 4 席救護格狀排版 */
+.slot-seats-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.65rem;
+  margin-bottom: 0.85rem;
+}
+
+/* 1 席值班排版 */
+.slot-seats-grid-1 {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.65rem;
+}
+
+@media (max-width: 680px) {
+  .slot-seats-grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* 席位卡單元 */
+.slot-seat-box {
+  border-radius: 10px;
+  padding: 0.75rem 0.6rem;
+  text-align: center;
+  position: relative;
+  transition: var(--transition);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 96px;
+}
+
+.slot-seat-box.occupied {
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  box-shadow: inset 0 0 10px rgba(56, 189, 248, 0.05);
+}
+
+.slot-seat-box.occupied.desk-occupied {
+  border-color: rgba(192, 132, 252, 0.4);
+  background: rgba(46, 16, 101, 0.25);
+}
+
+.slot-seat-box.is-mine {
+  border: 1px solid #f59e0b !important;
+  background: linear-gradient(180deg, rgba(245, 158, 11, 0.12) 0%, rgba(30, 41, 59, 0.8) 100%) !important;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.3) !important;
+}
+
+.slot-seat-box.vacant {
+  background: rgba(15, 23, 42, 0.4);
+  border: 1px dashed rgba(16, 185, 129, 0.45);
+  cursor: pointer;
+}
+
+.slot-seat-box.vacant:hover {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: #10b981;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.2);
+}
+
+.seat-num-badge {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.seat-member-name {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #fff;
+  margin: 2px 0;
+}
+
+.seat-member-role {
+  font-size: 0.7rem;
+  color: #94a3b8;
+}
+
+.seat-mine-tag {
+  font-size: 0.65rem;
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-weight: 700;
+  display: inline-block;
+  margin-top: 2px;
+}
+
+.btn-seat-claim {
+  margin-top: 6px;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+  width: 100%;
+}
+
+.btn-seat-claim:hover {
+  filter: brightness(1.15);
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+}
+
+.btn-seat-cancel {
+  margin-top: 6px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #f87171;
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  width: 100%;
+}
+
+.btn-seat-cancel:hover {
+  background: rgba(239, 68, 68, 0.35);
+  border-color: #ef4444;
+  color: #fff;
+}
+
+/* 容量警示與指示晶片 */
+.capacity-pill {
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.capacity-pill.available {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.capacity-pill.full {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+/* 月曆格子站位摘要條 */
+.cal-occupancy-summary {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 3px;
+  flex-wrap: wrap;
+}
+
+.cal-occ-badge {
+  font-size: 0.65rem;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.cal-occ-badge.ems {
+  background: rgba(6, 182, 212, 0.18);
+  color: #38bdf8;
+  border: 1px solid rgba(6, 182, 212, 0.3);
+}
+
+.cal-occ-badge.desk {
+  background: rgba(168, 85, 247, 0.18);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.cal-occ-badge.full {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+/* 彈性時段快捷標籤 */
+.btn-preset-period {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle);
+  color: #cbd5e1;
+  padding: 0.35rem 0.65rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.btn-preset-period:hover, .btn-preset-period.active {
+  background: rgba(6, 182, 212, 0.2);
+  border-color: var(--primary-cyan);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+/* 全日 07:00~23:00 即時容量時間軸 */
+.timeline-track-wrap {
+  display: grid;
+  grid-template-columns: repeat(16, 1fr);
+  gap: 4px;
+  margin-top: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.timeline-hour-slot {
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 4px 2px;
+  text-align: center;
+  font-size: 0.68rem;
+  min-width: 38px;
+}
+
+.timeline-hour-slot .th-label {
+  color: var(--text-muted);
+  font-weight: 700;
+  margin-bottom: 3px;
+  font-size: 0.7rem;
+}
+
+.timeline-hour-slot .th-ems {
+  border-radius: 3px;
+  padding: 2px 1px;
+  font-weight: 700;
+  font-size: 0.65rem;
+  margin-bottom: 2px;
+}
+
+.timeline-hour-slot .th-ems.safe {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+
+.timeline-hour-slot .th-ems.half {
+  background: rgba(56, 189, 248, 0.2);
+  color: #38bdf8;
+}
+
+.timeline-hour-slot .th-ems.full {
+  background: rgba(239, 68, 68, 0.25);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.timeline-hour-slot .th-desk {
+  border-radius: 3px;
+  padding: 1px 1px;
+  font-size: 0.62rem;
+  color: #94a3b8;
+}
+
+.timeline-hour-slot .th-desk.occupied {
+  background: rgba(168, 85, 247, 0.25);
+  color: #e9d5ff;
+  font-weight: 700;
+  border: 1px solid rgba(168, 85, 247, 0.4);
+}
+
+
+
 
 

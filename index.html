@@ -17,7 +17,7 @@
   <!-- Supabase JS Client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
-  <link rel="stylesheet" href="styles.css?v=20261007_v5">
+  <link rel="stylesheet" href="styles.css?v=20261007_v8">
 </head>
 <body>
 
@@ -315,15 +315,15 @@
           <div>
             <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem;">
               <span style="font-size: 1.25rem;">📜</span>
-              <h3 style="font-size: 1.05rem; font-weight: 700; color: #fff;">博館分隊救護義消協勤排班制度與規範</h3>
+              <h3 style="font-size: 1.05rem; font-weight: 700; color: #fff;">博館分隊救護義消協勤排班制度與四大核心規範</h3>
               <span style="font-size: 0.72rem; background: rgba(6,182,212,0.15); color: #38bdf8; padding: 2px 8px; border-radius: 99px; font-weight: 600;">官方準則</span>
             </div>
             <p style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.6;">
-              ① <strong>服勤時間</strong>：僅限 <code>07:00 ~ 23:00</code> ｜ 
-              ② <strong>人數上限</strong>：同時段最多 <strong>4 位救護班</strong>、<strong>1 位值班台</strong> ｜ 
-              ③ <strong>預約額度</strong>：每人上限 <strong>3 班</strong>（含跨月，協勤完方可遞補） ｜ 
-              ④ <strong>補定訓</strong>：改值值班台（每次 4 小時），臨時取消視為缺席且不得補值 ｜
-              ⑤ <strong>雲端刪除</strong>：登記後無法協勤請務必及早於系統取消釋出。
+              ① 🏢 <strong>協勤值班</strong>：<strong>一個時段僅能 1 位</strong>（值班台限額，額滿即鎖定） ｜ 
+              ② 🚑 <strong>協勤救護</strong>：<strong>一個時段最多僅能 4 位</strong>（隊上待命隨車出勤） ｜ 
+              ③ ⚡ <strong>先填先站位</strong>：<strong>採先登記先站位機制</strong>，席位即時透明，額滿自動防呆防超額 ｜ 
+              ④ 🚨 <strong>突發狀況取消</strong>：<strong>遇突發狀況隨時可取消預定</strong>，系統即刻釋出席位供弟兄姊妹遞補！ ｜ 
+              ⑤ ⏰ <strong>服勤時間</strong>：僅限 <code>07:00 ~ 23:00</code>（每人上限 3 班，協勤完方可遞補）。
             </p>
           </div>
           <button id="btnToggleRuleDetail" class="btn-secondary" style="font-size: 0.78rem; padding: 0.35rem 0.75rem; white-space: nowrap;">
@@ -342,6 +342,17 @@
           <div style="color: var(--text-muted); font-size: 0.78rem;">
             📌 補定訓注意事項：同一時段值班僅限 1 人，補定訓一次 1 人 4 小時；若取消視為缺席定訓，不可再次補值班。
           </div>
+        </div>
+      </div>
+
+      <!-- 突發狀況席次即時釋出動態條 (歡迎先填先站位遞補) -->
+      <div id="releasedShiftsFeed" class="released-feed-box" style="display: none;">
+        <div class="released-feed-title">
+          <span>📢</span>
+          <span>即時席次釋出動態：</span>
+        </div>
+        <div id="releasedFeedContent" class="released-feed-item">
+          <!-- 動態插入最新取消釋出的班次 -->
         </div>
       </div>
 
@@ -968,18 +979,58 @@
         </div>
 
         <div class="form-group">
-          <label>協勤時段 (依規定僅限 07:00 ~ 23:00)</label>
-          <select id="inputShiftPeriod" class="form-select">
-            <option value="18:00-23:00">18:00-23:00 (夜間自排熱門時段 5hr)</option>
-            <option value="18:00-22:00">18:00-22:00 (晚班協勤/補定訓 4hr)</option>
-            <option value="14:00-18:00">14:00-18:00 (下午協勤/補定訓 4hr)</option>
-            <option value="08:00-12:00">08:00-12:00 (早班協勤/補定訓 4hr)</option>
-            <option value="13:00-17:00">13:00-17:00 (午後協勤/補定訓 4hr)</option>
-            <option value="16:00-22:00">16:00-22:00 (晚間跨班協勤 6hr)</option>
-            <option value="08:00-16:00">08:00-16:00 (全日白班協勤 8hr)</option>
-            <option value="11:00-23:00">11:00-23:00 (假日跨班 12hr)</option>
-            <option value="07:00-18:00">07:00-18:00 (TP專責早班 11hr)</option>
-          </select>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; flex-wrap: wrap; gap: 0.35rem;">
+            <label style="margin-bottom: 0; font-weight: 700;">🕒 協勤時段 (✍️ 支援直接手動輸入 / 自由排定・07:00 ~ 23:00)</label>
+            <span id="shiftDurationBadge" style="font-size: 0.75rem; background: rgba(56,189,248,0.15); color: #38bdf8; padding: 2px 8px; border-radius: 99px; font-weight: 700;">⏱️ 協勤時長：5.0 小時</span>
+          </div>
+
+          <!-- 1. 直接手動輸入框（最自由！直接鍵盤輸入如 09-15、07-15、09:30-15:00） -->
+          <div style="margin-bottom: 0.65rem;">
+            <div style="position: relative;">
+              <input type="text" id="inputShiftPeriod" class="form-input" placeholder="可直接手動輸入，例如：09-15、07-15 或 09:00-15:00" value="18:00-23:00" style="font-size: 1.05rem; font-weight: 700; letter-spacing: 0.5px; background: rgba(15,23,42,0.85); border: 2px solid rgba(56,189,248,0.5); padding: 0.6rem 0.9rem; color: #fff; width: 100%;">
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 5px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.35rem;">
+              <span>💡 <strong>支援任意手動輸入：</strong>鍵盤輸入 <code style="color: #38bdf8; background: rgba(56,189,248,0.1); padding: 1px 4px; border-radius: 3px;">09-15</code>、<code style="color: #38bdf8; background: rgba(56,189,248,0.1); padding: 1px 4px; border-radius: 3px;">07-15</code>、<code style="color: #38bdf8; background: rgba(56,189,248,0.1); padding: 1px 4px; border-radius: 3px;">17-22</code> 皆可自動解析！</span>
+              <span id="periodInputHint" style="color: #34d399; font-weight: 700;">✅ 格式正確 (18:00 至 23:00，共 5.0h)</span>
+            </div>
+          </div>
+
+          <!-- 2. 常用時段一鍵快捷鍵 (包含 09-15, 09-13, 07-15, 17-22 等) -->
+          <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.65rem;">
+            <button type="button" class="btn-preset-period" data-start="09:00" data-end="15:00">⚡ 09:00-15:00 (6h)</button>
+            <button type="button" class="btn-preset-period" data-start="09:00" data-end="13:00">⚡ 09:00-13:00 (4h)</button>
+            <button type="button" class="btn-preset-period" data-start="07:00" data-end="15:00">⚡ 07:00-15:00 (8h)</button>
+            <button type="button" class="btn-preset-period" data-start="17:00" data-end="22:00">⚡ 17:00-22:00 (5h)</button>
+            <button type="button" class="btn-preset-period" data-start="18:00" data-end="23:00">⚡ 18:00-23:00 (5h)</button>
+            <button type="button" class="btn-preset-period" data-start="14:00" data-end="18:00">⚡ 14:00-18:00 (4h)</button>
+            <button type="button" class="btn-preset-period" data-start="08:00" data-end="12:00">⚡ 08:00-12:00 (4h)</button>
+          </div>
+
+          <!-- 3. 起訖選單輔助（亦可由此點選，雙向自動同步上方文字輸入框） -->
+          <details style="margin-bottom: 0.5rem; background: rgba(255,255,255,0.03); border-radius: 6px; padding: 0.35rem 0.65rem; border: 1px solid rgba(255,255,255,0.06);">
+            <summary style="font-size: 0.75rem; color: var(--text-muted); cursor: pointer; user-select: none;">
+              🔽 或使用時間下拉選單點選輔助
+            </summary>
+            <div style="display: grid; grid-template-columns: 1fr auto 1fr; gap: 0.5rem; align-items: center; margin-top: 0.4rem;">
+              <div>
+                <span style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 2px;">開始時間</span>
+                <select id="inputShiftStartTime" class="form-select" style="font-size: 0.88rem; font-weight: 600;"></select>
+              </div>
+              <div style="font-size: 0.95rem; color: var(--text-muted); text-align: center; padding-top: 14px;">至</div>
+              <div>
+                <span style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 2px;">結束時間</span>
+                <select id="inputShiftEndTime" class="form-select" style="font-size: 0.88rem; font-weight: 600;"></select>
+              </div>
+            </div>
+          </details>
+
+          <!-- 即時時段席次狀態儀表 (先填先站位即時回饋) -->
+          <div id="modalSlotLiveStatusBox" style="margin-top: 0.65rem; padding: 0.65rem 0.85rem; border-radius: var(--radius-sm); font-size: 0.82rem; background: rgba(15,23,42,0.6); border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+            <div id="modalSlotLiveStatusText">
+              <span>⚡ 先填先站位狀態：</span><strong style="color: #38bdf8;" id="modalSlotLiveStatusDesc">檢核中...</strong>
+            </div>
+            <div id="modalSlotLiveStatusBadge" class="capacity-pill available">尚有空席</div>
+          </div>
         </div>
 
         <!-- 補定訓專屬警語卡 (動態顯示) -->
@@ -1000,33 +1051,105 @@
 
         <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem;">
           <button type="button" class="btn-secondary" data-close-modal="modalClaimShift">取消</button>
-          <button type="submit" id="btnSubmitClaimShift" class="btn-success">送出登記排班</button>
+          <button type="submit" id="btnSubmitClaimShift" class="btn-success">送出登記排班 (先填先站位)</button>
         </div>
       </form>
     </div>
   </div>
 
-  <!-- ==================== MODAL 3: 單日排班詳細清單 (點擊月曆格彈出) ==================== -->
+  <!-- ==================== MODAL 3: 單日排班詳細清單 (點擊月曆格彈出・席位化看板) ==================== -->
   <div id="modalDayDetail" class="modal-overlay">
-    <div class="modal-box" style="max-width: 650px;">
+    <div class="modal-box" style="max-width: 820px;">
       <div class="modal-title-row">
         <div>
           <h3 style="font-size: 1.25rem; font-weight: 700;" id="dayDetailTitle">📅 115年10月01日 (四) 排班詳情</h3>
-          <p style="font-size: 0.8rem; color: var(--text-muted);" id="dayDetailSub">博館分隊 救護待命與值班台協勤值勤表</p>
+          <p style="font-size: 0.8rem; color: var(--text-muted);" id="dayDetailSub">博館分隊 救護待命與值班台協勤 ｜ 全日彈性時段與先填先站位看板</p>
         </div>
         <button class="btn-close-modal" data-close-modal="modalDayDetail">&times;</button>
       </div>
 
-      <div id="dayDetailShiftsList" style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.5rem;">
-        <!-- 由 JS 動態生成當日所有班次列表 -->
+      <!-- 席次規則快速提醒條 -->
+      <div style="background: rgba(6,182,212,0.1); border: 1px solid rgba(6,182,212,0.25); border-radius: 8px; padding: 0.65rem 1rem; margin-bottom: 0.85rem; font-size: 0.8rem; color: #bae6fd; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <div>
+          ⚡ <strong>彈性自訂時段・先填先站位：</strong>配合工作自由填寫時段（如 09-13、07-15、17-22 等），協勤值班限 <strong>1 位</strong> ｜ 協勤救護最多 <strong>4 位</strong>！
+        </div>
+        <div style="font-size: 0.75rem; color: #34d399; font-weight: 600;">
+          🟢 遇突發狀況可隨時取消釋出名額
+        </div>
       </div>
 
-      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-subtle); padding-top: 1rem;">
+      <!-- 全日 07:00 ~ 23:00 即時容量時間軸分佈條 -->
+      <div id="dayTimelineContainer" style="margin-bottom: 1.15rem;"></div>
+
+      <div id="dayDetailShiftsList" style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.5rem; max-height: 52vh; overflow-y: auto; padding-right: 4px;">
+        <!-- 由 JS 動態生成當日席位視覺化看板 -->
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-subtle); padding-top: 1rem; flex-wrap: wrap; gap: 0.5rem;">
         <button type="button" class="btn-secondary" data-close-modal="modalDayDetail">關閉</button>
         <button type="button" id="btnDayDetailAddShift" class="btn-primary">
-          <span>➕ 在這一天新增我的登記班</span>
+          <span>➕ 自由登記彈性時段 (例如 09-13、07-15、17-22)</span>
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL 3.5: 遇突發狀況取消預定 ==================== -->
+  <div id="modalCancelShift" class="modal-overlay">
+    <div class="modal-box" style="max-width: 520px; border-color: rgba(239,68,68,0.5); box-shadow: 0 0 35px rgba(239,68,68,0.25);">
+      <div class="modal-title-row">
+        <div style="display: flex; align-items: center; gap: 0.6rem;">
+          <span style="font-size: 1.5rem;">🚨</span>
+          <div>
+            <h3 style="font-size: 1.2rem; font-weight: 700; color: #f87171;">遇突發狀況取消排班預定</h3>
+            <p style="font-size: 0.78rem; color: var(--text-muted);">博館分隊協勤制度・隨時可取消・名額即時釋出遞補</p>
+          </div>
+        </div>
+        <button class="btn-close-modal" data-close-modal="modalCancelShift">&times;</button>
+      </div>
+
+      <div style="background: rgba(30,41,59,0.7); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.25rem;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; font-size: 0.85rem;">
+          <div><span style="color: var(--text-muted);">協勤日期：</span><strong id="cancelModalDate" style="color: #fff;">115-10-15</strong></div>
+          <div><span style="color: var(--text-muted);">協勤時段：</span><strong id="cancelModalPeriod" style="color: #38bdf8;">18:00-23:00</strong></div>
+          <div><span style="color: var(--text-muted);">勤務項目：</span><strong id="cancelModalVehicle" style="color: #34d399;">🚑 協勤救護</strong></div>
+          <div><span style="color: var(--text-muted);">預約同仁：</span><strong id="cancelModalMember" style="color: #fbbf24;">謝易庭</strong></div>
+        </div>
+      </div>
+
+      <form id="formCancelShift">
+        <input type="hidden" id="cancelModalShiftId" value="">
+        <div class="form-group" style="margin-bottom: 1rem;">
+          <label style="font-weight: 600; font-size: 0.85rem; color: #cbd5e1; display: block; margin-bottom: 0.4rem;">
+            突發狀況事由說明 <span style="color: #f87171;">*</span>
+          </label>
+          <select id="cancelReasonCategory" class="form-select" style="width: 100%;">
+            <option value="臨時工作加班 / 公司緊急公務">💼 臨時工作加班 / 公司緊急公務 (職場突發事由)</option>
+            <option value="突發生病 / 身體不適 / 就醫">🤒 突發生病 / 身體不適 / 就醫 (健康突發因素)</option>
+            <option value="緊急家庭事務 / 臨時私人要事">🏠 緊急家庭事務 / 臨時要事 (突發家務事)</option>
+            <option value="分隊公務調配 / 消防勤務調整">🚒 消防分隊公務調配 / 勤務調整 (分隊勤務)</option>
+            <option value="其他突發狀況">📝 其他突發狀況 (於下方備註說明)</option>
+          </select>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 1.25rem;">
+          <label style="font-weight: 600; font-size: 0.82rem; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
+            補充備註說明 (選填)
+          </label>
+          <input type="text" id="cancelReasonNote" class="form-input" placeholder="例如：夜間臨時接獲單位召回，請其他弟兄協助遞補站位..." style="width: 100%;">
+        </div>
+
+        <div style="background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25); border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.25rem; font-size: 0.8rem; color: #a7f3d0; line-height: 1.5;">
+          💡 <strong>釋出名額保證：</strong>確認取消後，此席位將<strong>即刻於雲端重新釋出</strong>供其他同仁「先填先站位」遞補，並恢復您的預約額度。
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
+          <button type="button" class="btn-secondary" data-close-modal="modalCancelShift">保留預約 (不取消)</button>
+          <button type="submit" id="btnConfirmCancelShift" class="btn-primary" style="background: linear-gradient(135deg, #ef4444, #dc2626); border-color: #ef4444;">
+            🚨 確認取消並即刻釋出席位
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -1444,6 +1567,6 @@
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- 主邏輯 JS -->
-  <script type="module" src="app.js?v=20261007_v6"></script>
+  <script type="module" src="app.js?v=20261007_v8"></script>
 </body>
 </html>

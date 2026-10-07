@@ -64,6 +64,18 @@ let shifts = Store.get('shifts', INITIAL_SHIFTS).map(s => {
 Store.set('shifts', shifts);
 let currentMemberId = Store.get('currentMemberId', 'm1');
 let activeDuty = Store.get('activeDuty', null); // { memberId, startTime: timestamp, dateStr }
+let cancellationLogs = Store.get('cancellation_logs', [
+  {
+    id: 'can-1',
+    shiftId: 's-mock',
+    date: '115-10-06',
+    period: '18:00-23:00',
+    vehicle: '救護協勤',
+    memberName: '韓寧',
+    reason: '臨時工作加班 / 公司緊急公務',
+    timestamp: '17:20'
+  }
+]);
 
 // ==========================================
 // 1.1 Supabase 雲端客戶端與即時同步引擎
@@ -782,11 +794,22 @@ function renderVisualCalendar() {
       chipsHtml += `<div style="font-size: 0.7rem; color: var(--text-dim); margin-top: 4px;">無缺額班次</div>`;
     }
 
+    // 當日站位席次統計 (先填先站位燈號)
+    const activeEmsCount = dayShifts.filter(s => !s.vehicle.includes('值班') && s.memberName && s.status !== '缺協勤').length;
+    const activeDeskCount = dayShifts.filter(s => s.vehicle.includes('值班') && s.memberName && s.status !== '缺協勤').length;
+    const occSummaryHtml = `
+      <div class="cal-occupancy-summary">
+        <span class="cal-occ-badge ems ${activeEmsCount >= 4 ? 'full' : ''}" title="協勤救護：${activeEmsCount}/4 位">🚑 救護 ${activeEmsCount}/4${activeEmsCount >= 4 ? '滿' : ''}</span>
+        <span class="cal-occ-badge desk ${activeDeskCount >= 1 ? 'full' : ''}" title="協勤值班：${activeDeskCount}/1 位">🏢 值班 ${activeDeskCount}/1${activeDeskCount >= 1 ? '滿' : ''}</span>
+      </div>
+    `;
+
     cell.innerHTML = `
       <div class="calendar-day-header">
         <span class="calendar-day-num">${d}</span>
         <div style="display: flex; gap: 4px;">${badgeHtml}</div>
       </div>
+      ${occSummaryHtml}
       <div class="calendar-shifts-box">
         ${chipsHtml}
       </div>
@@ -817,16 +840,49 @@ function getMemberFutureShifts(memberName) {
   return shifts.filter(s => s.memberName === memberName && s.date >= CURRENT_SYSTEM_DATE && s.status !== '缺席');
 }
 
-// 時間解析器：把 "08:00-12:00" 或 "08:00~12:00" 轉為自午夜起的 startMin, endMin
+// 智慧彈性時間解析器：支援手動輸入如 "09-15", "9-15", "09:00-15:00", "09:30-15:00", "09~15", "0900-1500" 等
 function parseTimePeriod(periodStr) {
-  if (!periodStr) return { startMin: 0, endMin: 0, valid: false };
-  const parts = periodStr.split(/[~-]/);
-  if (parts.length !== 2) return { startMin: 0, endMin: 0, valid: false };
-  const [sh, sm] = parts[0].trim().split(':').map(Number);
-  const [eh, em] = parts[1].trim().split(':').map(Number);
-  const startMin = (sh || 0) * 60 + (sm || 0);
-  const endMin = (eh || 0) * 60 + (em || 0);
-  return { startMin, endMin, valid: !isNaN(startMin) && !isNaN(endMin) && endMin > startMin };
+  if (!periodStr || typeof periodStr !== 'string') return { startMin: 0, endMin: 0, valid: false, formatted: '' };
+  const raw = periodStr.trim().replace(/\s+/g, '');
+  const parts = raw.split(/[~-至到]/);
+  if (parts.length !== 2) return { startMin: 0, endMin: 0, valid: false, formatted: '' };
+
+  function parsePart(p) {
+    if (!p) return null;
+    // 包含冒號格式，例如 "09:30", "9:00"
+    if (p.includes(':')) {
+      const [h, m] = p.split(':').map(Number);
+      if (isNaN(h)) return null;
+      return (h || 0) * 60 + (m || 0);
+    }
+    // 4位純數字格式，例如 "0930", "1500"
+    if (/^\d{4}$/.test(p)) {
+      const h = Number(p.slice(0, 2));
+      const m = Number(p.slice(2, 4));
+      return h * 60 + m;
+    }
+    // 1~2位純數字格式（常見手動簡寫），例如 "9", "09", "15", "22"
+    if (/^\d{1,2}$/.test(p)) {
+      const h = Number(p);
+      return h * 60;
+    }
+    return null;
+  }
+
+  const startMin = parsePart(parts[0]);
+  const endMin = parsePart(parts[1]);
+
+  if (startMin === null || endMin === null || isNaN(startMin) || isNaN(endMin) || endMin <= startMin) {
+    return { startMin: 0, endMin: 0, valid: false, formatted: '' };
+  }
+
+  const sh = String(Math.floor(startMin / 60)).padStart(2, '0');
+  const sm = String(startMin % 60).padStart(2, '0');
+  const eh = String(Math.floor(endMin / 60)).padStart(2, '0');
+  const em = String(endMin % 60).padStart(2, '0');
+  const formatted = `${sh}:${sm}-${eh}:${em}`;
+
+  return { startMin, endMin, valid: true, formatted };
 }
 
 // 檢查時段是否嚴格在分隊規定 07:00 ~ 23:00 之間 (420 ~ 1380 分鐘)
@@ -842,6 +898,85 @@ function isTimeOverlap(p1, p2) {
   const t2 = parseTimePeriod(p2);
   if (!t1.valid || !t2.valid) return false;
   return Math.max(t1.startMin, t2.startMin) < Math.min(t1.endMin, t2.endMin);
+}
+
+// 計算指定日期與彈性時段的容量與尖峰站位人數 (協勤值班限 1 位、協勤救護限 4 位)
+function getSlotCapacityStatus(date, period, ignoreShiftId = null) {
+  const reqTime = parseTimePeriod(period);
+  const sameDayShifts = shifts.filter(s => s.date === date && s.id !== ignoreShiftId && s.memberName && s.status !== '缺席' && s.status !== '缺協勤');
+
+  if (!reqTime.valid) {
+    return {
+      overlappingShifts: [],
+      emsOccupants: [],
+      deskOccupants: [],
+      peakEmsConcurrency: 0,
+      peakDeskConcurrency: 0,
+      emsCapacity: 4,
+      deskCapacity: 1,
+      emsAvailable: 4,
+      deskAvailable: 1,
+      emsFull: false,
+      deskFull: false,
+      bottleneckEmsPeriod: null,
+      bottleneckDeskPeriod: null
+    };
+  }
+
+  // 與請求區間有任何重疊的既有班次
+  const overlappingShifts = sameDayShifts.filter(s => isTimeOverlap(s.period, period));
+  const emsOccupants = overlappingShifts.filter(s => !s.vehicle.includes('值班'));
+  const deskOccupants = overlappingShifts.filter(s => s.vehicle.includes('值班') || (s.shiftType && s.shiftType.includes('值班')) || (s.vehicle && s.vehicle.includes('補定訓')));
+
+  // 彈性時段每 15 分鐘精準取樣，檢驗區間內的最大同仁並發數量 (Peak Concurrency)
+  let peakEmsConcurrency = 0;
+  let peakDeskConcurrency = 0;
+  let bottleneckEmsPeriod = null;
+  let bottleneckDeskPeriod = null;
+
+  for (let m = reqTime.startMin; m < reqTime.endMin; m += 15) {
+    const activeEms = emsOccupants.filter(s => {
+      const t = parseTimePeriod(s.period);
+      return t.valid && t.startMin <= m && m < t.endMin;
+    });
+    if (activeEms.length > peakEmsConcurrency) {
+      peakEmsConcurrency = activeEms.length;
+      const sh = String(Math.floor(m / 60)).padStart(2, '0');
+      const sm = String(m % 60).padStart(2, '0');
+      const eh = String(Math.floor((m + 15) / 60)).padStart(2, '0');
+      const em = String((m + 15) % 60).padStart(2, '0');
+      bottleneckEmsPeriod = `${sh}:${sm}-${eh}:${em}`;
+    }
+
+    const activeDesk = deskOccupants.filter(s => {
+      const t = parseTimePeriod(s.period);
+      return t.valid && t.startMin <= m && m < t.endMin;
+    });
+    if (activeDesk.length > peakDeskConcurrency) {
+      peakDeskConcurrency = activeDesk.length;
+      const sh = String(Math.floor(m / 60)).padStart(2, '0');
+      const sm = String(m % 60).padStart(2, '0');
+      const eh = String(Math.floor((m + 15) / 60)).padStart(2, '0');
+      const em = String((m + 15) % 60).padStart(2, '0');
+      bottleneckDeskPeriod = `${sh}:${sm}-${eh}:${em}`;
+    }
+  }
+
+  return {
+    overlappingShifts,
+    emsOccupants,
+    deskOccupants,
+    peakEmsConcurrency,
+    peakDeskConcurrency,
+    emsCapacity: 4,
+    deskCapacity: 1,
+    emsAvailable: Math.max(0, 4 - peakEmsConcurrency),
+    deskAvailable: Math.max(0, 1 - peakDeskConcurrency),
+    emsFull: peakEmsConcurrency >= 4,
+    deskFull: peakDeskConcurrency >= 1,
+    bottleneckEmsPeriod,
+    bottleneckDeskPeriod
+  };
 }
 
 // 驗證預約規則
@@ -862,7 +997,7 @@ function validateShiftBooking(targetMember, date, vehicle, period, shiftType, ig
   if (targetMember.isRestricted && !isOfficerOverride && !isAdm) {
     return {
       ok: false,
-      reason: `⛔【處分管制中・禁止自行填班】\n隊員：${targetMember.name}\n管制期限：至 ${targetMember.restrictionUntil || '115-12-07'} 止（自刪除日起2個月）\n\n處分原因：超過三班且屬故意累犯，依規定於管制期內「無法自行填班，需透過小隊幹部填寫班表」！\n\n⚠️ 重大警告：管制期內如自行填班，將提請幹部會議開會討論決議是否依《義勇消防組織編組訓練演習服勤辦法》第八條第一項第7款予以解聘！\n請直接洽詢分隊幹部協助填寫。`
+      reason: `⛔【處分管制中・禁止自行填班】\n隊員：${targetMember.name}\n管制期限：至 ${targetMember.restrictionUntil || '115-12-07'} 止（自刪除日起2個月）\n\n處分原因：超過三班且屬故意累犯，依規定於管制期內「無法自行填班，需透過小隊幹部填寫班表」！\n請直接洽詢分隊幹部協助填寫。`
     };
   }
 
@@ -871,21 +1006,19 @@ function validateShiftBooking(targetMember, date, vehicle, period, shiftType, ig
   if (currentFuture.length >= 3 && !isOfficerOverride && !isAdm) {
     return {
       ok: false,
-      reason: `⚠️【預約額度已達上限】\n每位同仁每次預約上限最多 3 班（含跨月）！\n您目前已有 ${currentFuture.length} 班未協勤班次：\n${currentFuture.map(s => `• ${s.date} (${s.vehicle.includes('值班') ? s.vehicle : '救護協勤'} ${s.period})`).join('\n')}\n\n需待協勤完畢一班後，方可再往後填寫一班！`
+      reason: `⚠️【預約額度已達上限】\n每位同仁每次預約上限最多 3 班（含跨月）！\n您目前已有 ${currentFuture.length} 班未協勤班次：\n${currentFuture.map(s => `• ${s.date} (${s.vehicle.includes('值班') ? s.vehicle : '救護協勤'} ${s.period})`).join('\n')}\n\n需待協勤完畢一班後，方可再往後填寫一班！遇突發狀況可隨時取消預定以釋出額度。`
     };
   }
 
   // 4. 補定訓特定檢驗規則
   const isMakeup = vehicle.includes('補定訓') || shiftType.includes('補定訓');
   if (isMakeup) {
-    // 檢查是否曾臨時取消而被視為缺席
     if (targetMember.makeupTrainingStatus === 'cancelled_absent' && !isAdm) {
       return {
         ok: false,
         reason: '⛔【不得再補值班】\n依分隊值班注意事項第 2 點規定：補定訓如已登記於值班欄位，臨時取消視為「缺席定訓」，亦不可再次補值班！'
       };
     }
-    // 補定訓每次必須剛好 4 小時
     const durationHours = (timeInfo.endMin - timeInfo.startMin) / 60;
     if (durationHours !== 4 && !isAdm) {
       return {
@@ -895,36 +1028,33 @@ function validateShiftBooking(targetMember, date, vehicle, period, shiftType, ig
     }
   }
 
-  // 5. 同一時段人數上限檢驗
-  const sameDayShifts = shifts.filter(s => s.date === date && s.id !== ignoreShiftId && s.memberName && s.status !== '缺席');
-  const overlappingShifts = sameDayShifts.filter(s => isTimeOverlap(s.period, period));
+  // 5. 容量上限與「先填先站位」檢驗
+  const cap = getSlotCapacityStatus(date, period, ignoreShiftId);
 
-  // (A) 救護班 (分隊待命協勤)：同時段最多 4 位同仁，哪台車出勤就隨車出勤
+  // (A) 協勤救護：一個時段最多僅能 4 位，採先填先站位
   const isEms = !vehicle.includes('值班');
   if (isEms && !isAdm) {
-    const overlappingEms = overlappingShifts.filter(s => !s.vehicle.includes('值班'));
-    if (overlappingEms.length >= 4) {
+    if (cap.emsFull) {
       return {
         ok: false,
-        reason: `⚠️【救護協勤待命額滿】\n分隊規定：同一時段最多 4 位同仁於隊上待命協勤（哪台車出勤即隨車出勤）！\n該時段已有 4 位同仁待命：\n${overlappingEms.map(s => `• ${s.memberName} (${s.period})`).join('\n')}\n請選擇其他時段。`
+        reason: `⚠️【協勤救護已額滿（上限 4 位）】\n依分隊排班規則：協勤救護一個時段最多僅能 4 位同仁待命隨車出勤（採先填先站位原則）！\n該時段已有 4 位同仁站位：\n${cap.emsOccupants.map(s => `• ${s.memberName} (${s.period})`).join('\n')}\n請選擇其他時段。若有同仁遇突發狀況取消，名額將即時釋出供遞補。`
       };
     }
   }
 
-  // (B) 值班台 (含一般值班、補定訓)：同時段僅限 1 位同仁
+  // (B) 協勤值班：一個時段僅能 1 位，採先填先站位
   const isDesk = vehicle.includes('值班') || shiftType.includes('值班') || isMakeup;
   if (isDesk && !isAdm) {
-    const overlappingDesk = overlappingShifts.filter(s => s.vehicle.includes('值班') || s.shiftType.includes('值班') || s.vehicle.includes('補定訓'));
-    if (overlappingDesk.length >= 1) {
+    if (cap.deskFull) {
       return {
         ok: false,
-        reason: `⚠️【值班台額滿】\n分隊規定：同一時段值班人員僅能 1 人（補定訓亦僅限 1 位）！\n該時段已有同仁值班：${overlappingDesk[0].memberName} (${overlappingDesk[0].period})。\n請選擇其他時段。`
+        reason: `⚠️【協勤值班已額滿（上限 1 位）】\n依分隊排班規則：協勤值班一個時段僅能 1 位（採先填先站位原則）！\n該時段已有同仁值班：${cap.deskOccupants[0].memberName} (${cap.deskOccupants[0].period})。\n請選擇其他時段。`
       };
     }
   }
 
   // (C) 個人防重複檢驗：避免同仁自己同一時段排兩班
-  const mySelfOverlap = overlappingShifts.find(s => s.memberName === targetMember.name);
+  const mySelfOverlap = cap.overlappingShifts.find(s => s.memberName === targetMember.name);
   if (mySelfOverlap) {
     const vName = mySelfOverlap.vehicle.includes('值班') ? mySelfOverlap.vehicle : '救護待命';
     return {
@@ -936,8 +1066,8 @@ function validateShiftBooking(targetMember, date, vehicle, period, shiftType, ig
   return { ok: true };
 }
 
-// 雲端刪除與取消協勤功能 (釋出名額)
-function cancelShift(shiftId) {
+// 突發狀況取消排班彈窗控制
+function openEmergencyCancelModal(shiftId) {
   const shift = shifts.find(s => s.id === shiftId);
   if (!shift) return;
   const cur = getCurrentMember();
@@ -951,36 +1081,169 @@ function cancelShift(shiftId) {
   }
 
   const isMakeup = (shift.vehicle && shift.vehicle.includes('補定訓')) || (shift.shiftType && shift.shiftType.includes('補定訓'));
-
   if (isMakeup) {
     const confirmMakeup = confirm(
-      `⚠️【值班注意事項重大警告】\n依分隊規定：\n「補定訓改為值值班台，每次四小時，如已登記補定訓於值班欄位，臨時取消，視為缺席定訓，亦不可再次補值班！」\n\n您確定要取消 ${shift.date} 的補定訓班次嗎？\n（確認後將註記為缺席定訓，且本期無法再次登記補值班）`
+      `⚠️【補定訓注意事項警語】\n依分隊規定：\n「補定訓改為值值班台，每次四小時，如已登記補定訓於值班欄位，臨時取消視為缺席定訓，亦不可再次補值班！」\n\n確定要取消 ${shift.date} 的補定訓班次嗎？`
     );
     if (!confirmMakeup) return;
-
-    // 標記隊員狀態為缺席定訓
     const targetMem = members.find(m => m.name === shift.memberName);
     if (targetMem) {
       targetMem.makeupTrainingStatus = 'cancelled_absent';
       Store.set('members', members);
     }
-  } else {
-    const vDisplay = shift.vehicle && shift.vehicle.includes('值班') ? shift.vehicle : '救護協勤 (隊上待命)';
-    const confirmNormal = confirm(
-      `確定要於雲端取消 ${shift.date} (${vDisplay} ${shift.period}) 的協勤預約嗎？\n\n取消後將釋出此名額供其他同仁認領，並退回您的 1 班預約額度。`
-    );
-    if (!confirmNormal) return;
   }
 
+  const modal = document.getElementById('modalCancelShift');
+  if (!modal) {
+    cancelShift(shiftId);
+    return;
+  }
+
+  document.getElementById('cancelModalShiftId').value = shift.id;
+  document.getElementById('cancelModalDate').textContent = shift.date;
+  document.getElementById('cancelModalPeriod').textContent = shift.period;
+  document.getElementById('cancelModalVehicle').textContent = shift.vehicle && shift.vehicle.includes('值班') ? `🏢 ${shift.vehicle}` : '🚑 協勤救護';
+  document.getElementById('cancelModalMember').textContent = shift.memberName || cur.name;
+  document.getElementById('cancelReasonNote').value = '';
+
+  modal.classList.add('open');
+}
+
+// 執行突發狀況取消排班 (釋出席位並記錄動態)
+function executeEmergencyCancel(shiftId, reasonCategory, reasonNote) {
+  const shift = shifts.find(s => s.id === shiftId);
+  if (!shift) return;
   const prevMember = shift.memberName;
+
+  const isMakeup = (shift.vehicle && shift.vehicle.includes('補定訓')) || (shift.shiftType && shift.shiftType.includes('補定訓'));
+  if (isMakeup) {
+    const targetMem = members.find(m => m.name === shift.memberName);
+    if (targetMem) {
+      targetMem.makeupTrainingStatus = 'cancelled_absent';
+      Store.set('members', members);
+    }
+  }
+
+  // 寫入突發狀況取消記錄
+  const newLog = {
+    id: `can-${Date.now()}`,
+    shiftId: shift.id,
+    date: shift.date,
+    period: shift.period,
+    vehicle: shift.vehicle,
+    memberName: prevMember,
+    reason: reasonCategory + (reasonNote ? ` (${reasonNote})` : ''),
+    timestamp: new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })
+  };
+  cancellationLogs.unshift(newLog);
+  if (cancellationLogs.length > 20) cancellationLogs.pop();
+  Store.set('cancellation_logs', cancellationLogs);
+
+  // 釋出名額
   shift.memberName = '';
   shift.status = '缺協勤';
   Store.set('shifts', shifts);
   pushShiftToSupabase(shift);
 
+  document.getElementById('modalCancelShift')?.classList.remove('open');
   updateAllViews();
-  showToast(`已成功取消【${prevMember}】的預約，該班次名額已於雲端即時釋出！`, '🔄');
+  renderReleasedFeed();
+
+  // 若當日詳細視窗開啟中，重新載入
+  const modalDay = document.getElementById('modalDayDetail');
+  if (modalDay && modalDay.classList.contains('open')) {
+    const day = Number(shift.date.split('-')[2]);
+    openDayDetailModal(day);
+  }
+
+  showToast(`已成功取消預定！因突發狀況釋出之名額已於雲端開放供全隊同仁先填先站位遞補。`, '🚨');
   playFeedbackSound('success');
+}
+
+// 相容舊有取消按鈕直接呼叫
+function cancelShift(shiftId) {
+  openEmergencyCancelModal(shiftId);
+}
+
+// 一鍵「⚡ 先填先站位」
+function claimSlotInstantly(date, period, category) {
+  const cur = getCurrentMember();
+  const vehicle = category === '值班' ? '值班台' : '救護協勤';
+  const shiftType = category === '值班' ? '幹部值班' : '自排班';
+
+  // 進行四大鐵律與容量法規檢驗
+  const validation = validateShiftBooking(cur, date, vehicle, period, shiftType, null, false);
+  if (!validation.ok) {
+    alert(validation.reason);
+    playFeedbackSound('alert');
+    return;
+  }
+
+  // 尋找現成空缺班次（狀態為 '缺協勤'），若有則直接認領
+  let vacantShift = shifts.find(s => s.date === date && s.period === period && (!s.memberName || s.status === '缺協勤') && (category === '值班' ? s.vehicle.includes('值班') : !s.vehicle.includes('值班')));
+
+  if (vacantShift) {
+    vacantShift.memberName = cur.name;
+    vacantShift.status = '已排班';
+    vacantShift.shiftType = shiftType;
+    pushShiftToSupabase(vacantShift);
+  } else {
+    const dayNum = Number(date.split('-')[2]) || 1;
+    const dateParts = date.split('-');
+    const gregYear = Number(dateParts[0]) + 1911;
+    const mIdx = Number(dateParts[1]) - 1;
+    const dVal = Number(dateParts[2]);
+    const weekdayName = ['日', '一', '二', '三', '四', '五', '六'][new Date(gregYear, mIdx, dVal).getDay()];
+
+    const newShift = {
+      id: `s-${Date.now()}`,
+      date,
+      day: dayNum,
+      dayOfWeek: weekdayName,
+      vehicle,
+      period,
+      memberName: cur.name,
+      status: '已排班',
+      shiftType,
+      isMakeupTraining: false
+    };
+    shifts.push(newShift);
+    pushShiftToSupabase(newShift);
+  }
+
+  Store.set('shifts', shifts);
+  updateAllViews();
+  const day = Number(date.split('-')[2]);
+  openDayDetailModal(day);
+  playFeedbackSound('success');
+  showToast(`⚡ 先填先站位成功！您已成功預約 ${date} (${vehicle} ${period}) 席位！`, '🎉');
+}
+
+// 渲染席次釋出即時動態條
+function renderReleasedFeed() {
+  const feedBox = document.getElementById('releasedShiftsFeed');
+  const feedContent = document.getElementById('releasedFeedContent');
+  if (!feedBox || !feedContent) return;
+
+  if (!cancellationLogs || cancellationLogs.length === 0) {
+    feedBox.style.display = 'none';
+    return;
+  }
+
+  const latest = cancellationLogs[0];
+  const isDesk = latest.vehicle && latest.vehicle.includes('值班');
+  const vLabel = isDesk ? '🏢 協勤值班' : '🚑 協勤救護';
+
+  feedBox.style.display = 'flex';
+  feedContent.innerHTML = `
+    <span>[${latest.timestamp || '即時'}] 同仁 <strong>${latest.memberName}</strong> 遇突發狀況（${latest.reason}）釋出 <strong>${latest.date} (${vLabel} ${latest.period})</strong> 席位！</span>
+    <button class="btn-quick-claim" data-date="${latest.date}">⚡ 立即前往先填先站位</button>
+  `;
+
+  feedContent.querySelector('.btn-quick-claim')?.addEventListener('click', () => {
+    const day = Number(latest.date.split('-')[2]);
+    openDayDetailModal(day);
+  });
 }
 
 // 更新個人預約額度狀態列 (N / 3 班)
@@ -1195,117 +1458,306 @@ function renderOfficerAuditPanel() {
   });
 }
 
-// 點擊開啟單日排班詳細彈窗
+// 點擊開啟單日排班詳細彈窗 (先填先站位席次看板 + 07:00~23:00 彈性時間軸)
 function openDayDetailModal(day) {
   const modal = document.getElementById('modalDayDetail');
   const dayStr = String(day).padStart(2, '0');
   const monthStr = String(calCurrentMonth).padStart(2, '0');
   const dateKey = `${calCurrentYear}-${monthStr}-${dayStr}`;
   const weekday = getRocDateWeekday(calCurrentYear, calCurrentMonth, day);
-  const dayShifts = shifts.filter(s => s.date === dateKey || (calCurrentMonth === 10 && s.day === day && !s.date?.includes('-')));
   const curUser = getCurrentMember();
   const isOfficer = isCurrentOfficer();
+  const isAdm = isSuperAdmin();
 
-  document.getElementById('dayDetailTitle').textContent = `📅 ${calCurrentYear}年${monthStr}月${dayStr}日 (週${weekday}) 排班詳情`;
-  document.getElementById('dayDetailSub').textContent = `博館分隊 救護待命與值班台協勤 ｜ 當日共 ${dayShifts.length} 班次`;
+  document.getElementById('dayDetailTitle').textContent = `📅 ${calCurrentYear}年${monthStr}月${dayStr}日 (週${weekday}) 彈性協勤排班詳情`;
+  document.getElementById('dayDetailSub').textContent = `博館分隊 救護待命與值班台 ｜ 自由填寫彈性時段（如 09-13、07-15、17-22）｜ 先填先站位`;
+
+  // 1. 渲染全日 07:00 ~ 23:00 即時人力負載時間軸分佈條
+  const timelineContainer = document.getElementById('dayTimelineContainer');
+  const dayShifts = shifts.filter(s => s.date === dateKey || (calCurrentMonth === 10 && s.day === day && !s.date?.includes('-')));
+
+  if (timelineContainer) {
+    let slotsHtml = '';
+    for (let h = 7; h < 23; h++) {
+      const hStr = String(h).padStart(2, '0');
+      const nextHStr = String(h + 1).padStart(2, '0');
+      const startMin = h * 60;
+      const endMin = (h + 1) * 60;
+      
+      // 計算該小時區間內在隊的救護與值班同仁
+      const activeEms = dayShifts.filter(s => {
+        if (s.vehicle && s.vehicle.includes('值班')) return false;
+        if (!s.memberName || s.status === '缺席' || s.status === '缺協勤') return false;
+        const tp = parseTimePeriod(s.period);
+        return tp.valid && Math.max(tp.startMin, startMin) < Math.min(tp.endMin, endMin);
+      });
+
+      const activeDesk = dayShifts.filter(s => {
+        if (!s.vehicle || !s.vehicle.includes('值班')) return false;
+        if (!s.memberName || s.status === '缺席' || s.status === '缺協勤') return false;
+        const tp = parseTimePeriod(s.period);
+        return tp.valid && Math.max(tp.startMin, startMin) < Math.min(tp.endMin, endMin);
+      });
+
+      const emsCount = activeEms.length;
+      const deskCount = activeDesk.length;
+      const emsClass = emsCount >= 4 ? 'full' : (emsCount >= 2 ? 'half' : 'safe');
+      const deskClass = deskCount >= 1 ? 'occupied' : '';
+
+      slotsHtml += `
+        <div class="timeline-hour-slot" title="${hStr}:00 - ${nextHStr}:00\n🚑 救護協勤：${emsCount}/4 位 (${activeEms.map(s => s.memberName).join('、') || '尚無'})\n🏢 值班台：${deskCount}/1 位 (${activeDesk.map(s => s.memberName).join('、') || '尚無'})\n點擊可直接登記此時段！" data-hour="${hStr}">
+          <div class="th-label">${hStr}:00</div>
+          <div class="th-ems ${emsClass}">🚑 ${emsCount}/4</div>
+          <div class="th-desk ${deskClass}">${deskCount >= 1 ? '🏢 值班' : '🏢 空'}</div>
+        </div>
+      `;
+    }
+
+    timelineContainer.innerHTML = `
+      <div style="background: rgba(15,23,42,0.7); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 0.75rem 1rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.45rem; flex-wrap: wrap; gap: 0.5rem;">
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span style="font-size: 1rem;">📊</span>
+            <span style="font-size: 0.85rem; font-weight: 700; color: #fff;">07:00 ~ 23:00 即時人力負載時間軸</span>
+            <span style="font-size: 0.72rem; color: var(--text-muted);">（滑鼠移入看人名，點擊時段可直達登記）</span>
+          </div>
+          <div style="display: flex; gap: 0.6rem; font-size: 0.72rem; align-items: center;">
+            <span style="color: #34d399;">● 救護尚餘席次</span>
+            <span style="color: #f87171;">● 救護滿席(4位)</span>
+            <span style="color: #c084fc;">● 值班席(上限1位)</span>
+          </div>
+        </div>
+        <div class="timeline-track-wrap">
+          ${slotsHtml}
+        </div>
+      </div>
+    `;
+
+    // 點擊時間軸小時格子，直接帶入自訂時段並開啟彈窗
+    timelineContainer.querySelectorAll('.timeline-hour-slot').forEach(slot => {
+      slot.style.cursor = 'pointer';
+      slot.addEventListener('click', () => {
+        const startH = slot.getAttribute('data-hour');
+        const endH = String(Math.min(23, Number(startH) + 4)).padStart(2, '0');
+        modal.classList.remove('open');
+        const selectDate = document.getElementById('inputShiftDate');
+        if (selectDate) selectDate.value = dateKey;
+        document.getElementById('inputShiftMemberName').value = getCurrentMember().name;
+        syncFlexiblePeriodInputs(`${startH}:00`, `${endH}:00`);
+        document.getElementById('modalClaimShift')?.classList.add('open');
+        updateClaimModalSlotMeter();
+      });
+    });
+  }
 
   const container = document.getElementById('dayDetailShiftsList');
   container.innerHTML = '';
 
-  if (dayShifts.length === 0) {
-    container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 2rem;">本日尚無任何同仁登記排班，歡迎登記首發！</div>`;
-  } else {
-    dayShifts.forEach(s => {
-      const isVac = !s.memberName || s.status === '缺協勤';
+  // 2. 顯示「當日已登記彈性班次即時明細」
+  const registeredShifts = dayShifts.filter(s => s.memberName && s.status !== '缺席' && s.status !== '缺協勤');
+  if (registeredShifts.length > 0) {
+    const regSection = document.createElement('div');
+    regSection.style.cssText = 'background: rgba(30,41,59,0.5); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 0.85rem 1rem; margin-bottom: 0.75rem;';
+    
+    let regListHtml = '';
+    registeredShifts.sort((a, b) => parseTimePeriod(a.period).startMin - parseTimePeriod(b.period).startMin).forEach(s => {
       const isMine = s.memberName === curUser.name;
-      const isDesk = s.vehicle.includes('值班');
-      const vClass = isDesk ? 'v-desk' : 'v-ems';
-      const vDisplay = isDesk ? s.vehicle : '🚑 救護協勤 (隊上待命)';
+      const memObj = members.find(m => m.name === s.memberName);
+      const isDesk = s.vehicle && s.vehicle.includes('值班');
+      const tInfo = parseTimePeriod(s.period);
+      const durationHours = tInfo.valid ? ((tInfo.endMin - tInfo.startMin) / 60).toFixed(1) : '4.0';
 
-      const card = document.createElement('div');
-      card.style.cssText = `
-        background: rgba(30, 41, 59, 0.6);
-        border: 1px solid ${isVac ? 'rgba(239,68,68,0.5)' : (isMine ? 'rgba(245,158,11,0.5)' : 'var(--border-subtle)')};
-        border-radius: 12px;
-        padding: 0.85rem 1.1rem;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 0.75rem;
+      regListHtml += `
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.45rem 0.65rem; background: rgba(15,23,42,0.5); border: 1px solid ${isMine ? 'rgba(56,189,248,0.5)' : 'rgba(255,255,255,0.06)'}; border-radius: 6px; margin-bottom: 0.35rem; flex-wrap: wrap; gap: 0.4rem;">
+          <div style="display: flex; align-items: center; gap: 0.6rem;">
+            <span style="font-size: 0.85rem;">${isDesk ? '🏢' : '🚑'}</span>
+            <strong style="font-size: 0.88rem; color: #fff;">${memObj?.avatar || '👨‍🚒'} ${s.memberName}</strong>
+            <span style="font-size: 0.72rem; color: ${isDesk ? '#c084fc' : '#38bdf8'}; font-weight: 600;">${isDesk ? '協勤值班' : '救護待命'}</span>
+            <span style="font-size: 0.75rem; color: #fbbf24; background: rgba(245,158,11,0.15); padding: 1px 6px; border-radius: 4px; font-weight: 700;">⏱️ ${s.period} (${durationHours}h)</span>
+            ${isMine ? '<span style="font-size: 0.68rem; background: #0284c7; color: #fff; padding: 1px 5px; border-radius: 3px;">您本人</span>' : ''}
+          </div>
+          <div>
+            ${(isMine || isOfficer || isAdm) ? `
+              <button class="btn-seat-cancel" data-shift-id="${s.id}" style="font-size: 0.72rem; padding: 3px 8px;">
+                🚨 遇突發狀況取消預定
+              </button>
+            ` : '<span style="font-size: 0.7rem; color: var(--text-muted);">已站位確認</span>'}
+          </div>
+        </div>
       `;
+    });
 
-      let actionHtml = '';
-      if (isVac) {
-        actionHtml = `<button class="btn-claim-shift" data-shift-id="${s.id}" style="padding: 0.45rem 1rem; font-size: 0.82rem;">🙋‍♂️ 我要認領此班</button>`;
-      } else if (isMine || isOfficer) {
-        actionHtml = `
-          <button class="btn-secondary btn-cancel-shift" data-shift-id="${s.id}" style="padding: 0.35rem 0.85rem; font-size: 0.78rem; color: #f87171; border-color: rgba(239,68,68,0.4); background: rgba(239,68,68,0.08);">
-            ❌ 取消/釋出名額
-          </button>
+    regSection.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+        <span style="font-size: 0.82rem; font-weight: 700; color: #38bdf8;">📋 今日已站位同仁清單（共 ${registeredShifts.length} 位）</span>
+        <span style="font-size: 0.72rem; color: var(--text-muted);">支援自訂彈性時段，遇突發狀況可隨時取消釋出</span>
+      </div>
+      ${regListHtml}
+    `;
+    container.appendChild(regSection);
+  }
+
+  // 3. 整理常用彈性時段站位卡片 (包含09-15, 09-13, 07-15, 17-22, 18-23等)
+  const defaultPeriods = ['09:00-15:00', '09:00-13:00', '07:00-15:00', '17:00-22:00', '18:00-23:00', '14:00-18:00', '08:00-12:00'];
+  const periodSet = new Set(defaultPeriods);
+  dayShifts.forEach(s => {
+    if (s.period) periodSet.add(s.period);
+  });
+
+  const sortedPeriods = Array.from(periodSet).sort((a, b) => {
+    const tA = parseTimePeriod(a).startMin;
+    const tB = parseTimePeriod(b).startMin;
+    return tA - tB;
+  });
+
+  sortedPeriods.forEach(period => {
+    const pInfo = parseTimePeriod(period);
+    const durationHours = pInfo.valid ? ((pInfo.endMin - pInfo.startMin) / 60).toFixed(1) : '4.0';
+    const cap = getSlotCapacityStatus(dateKey, period);
+
+    const card = document.createElement('div');
+    card.className = 'slot-group-card';
+
+    // (A) 救護席位 (4席)
+    let emsSeatsHtml = '';
+    for (let i = 0; i < 4; i++) {
+      const occ = cap.emsOccupants[i];
+      if (occ) {
+        const memObj = members.find(m => m.name === occ.memberName);
+        const isMine = occ.memberName === curUser.name;
+        emsSeatsHtml += `
+          <div class="slot-seat-box occupied ${isMine ? 'is-mine' : ''}">
+            <div>
+              <span class="seat-num-badge">救護席位 ${i + 1}</span>
+              <div class="seat-member-name">${memObj?.avatar || '👨‍🚒'} ${occ.memberName}</div>
+              <div class="seat-member-role">${memObj?.level || 'EMT-2'} (${occ.shiftType})</div>
+              ${isMine ? '<span class="seat-mine-tag">★ 您本人</span>' : ''}
+            </div>
+            ${(isMine || isOfficer || isAdm) ? `
+              <button class="btn-seat-cancel" data-shift-id="${occ.id}">
+                🚨 遇突發取消預定
+              </button>
+            ` : ''}
+          </div>
         `;
       } else {
-        actionHtml = `<span style="font-size: 0.8rem; color: var(--text-muted); background: rgba(255,255,255,0.05); padding: 4px 10px; border-radius: 99px;">已排定</span>`;
-      }
-
-      card.innerHTML = `
-        <div style="display: flex; align-items: center; gap: 0.75rem;">
-          <span class="vehicle-pill ${vClass}">${vDisplay}</span>
-          <div>
-            <div style="font-family: var(--font-display); font-weight: 700; font-size: 1.05rem;">
-              ${s.period}
-              <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 500; margin-left: 6px;">(${s.shiftType})</span>
+        emsSeatsHtml += `
+          <div class="slot-seat-box vacant">
+            <div>
+              <span class="seat-num-badge">救護席位 ${i + 1}</span>
+              <div style="font-weight: 700; font-size: 0.85rem; color: #34d399; margin: 4px 0;">🟢 開放站位</div>
+              <div style="font-size: 0.7rem; color: var(--text-muted);">尚無同仁登記</div>
             </div>
-            <div style="font-size: 0.85rem; color: ${isVac ? '#f87171' : '#38bdf8'}; font-weight: 600; margin-top: 2px;">
-              ${isVac ? '⚠️ 缺協勤人員 (等待認領中)' : `👨‍🚒 協勤人員：${s.memberName} ${isMine ? '★ (您本人)' : ''}`}
+            <button class="btn-seat-claim" data-date="${dateKey}" data-period="${period}" data-category="救護">
+              ⚡ 先填先站位
+            </button>
+          </div>
+        `;
+      }
+    }
+
+    // (B) 值班席位 (1席)
+    let deskSeatHtml = '';
+    const deskOcc = cap.deskOccupants[0];
+    if (deskOcc) {
+      const memObj = members.find(m => m.name === deskOcc.memberName);
+      const isMine = deskOcc.memberName === curUser.name;
+      const isMakeup = (deskOcc.vehicle && deskOcc.vehicle.includes('補定訓')) || (deskOcc.shiftType && deskOcc.shiftType.includes('補定訓'));
+      deskSeatHtml = `
+        <div class="slot-seat-box occupied desk-occupied ${isMine ? 'is-mine' : ''}">
+          <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; gap: 0.5rem;">
+            <div style="text-align: left;">
+              <span class="seat-num-badge">值班台專屬席位 (上限 1 位)</span>
+              <div class="seat-member-name">${memObj?.avatar || '🏢'} ${deskOcc.memberName} <span style="font-size: 0.78rem; color: #c084fc;">(${deskOcc.shiftType || '值班'})</span></div>
+              <div class="seat-member-role">${memObj?.role || '隊員'} ｜ ${isMakeup ? '⚠️ 補定訓值班 (固定4小時)' : '常規值班台待命'}</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              ${isMine ? '<span class="seat-mine-tag">★ 您本人</span>' : ''}
+              ${(isMine || isOfficer || isAdm) ? `
+                <button class="btn-seat-cancel" data-shift-id="${deskOcc.id}" style="width: auto; padding: 4px 10px;">
+                  🚨 遇突發取消預定
+                </button>
+              ` : ''}
             </div>
           </div>
         </div>
-
-        <div>
-          ${actionHtml}
+      `;
+    } else {
+      deskSeatHtml = `
+        <div class="slot-seat-box vacant" style="min-height: auto; padding: 0.85rem 1rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; gap: 0.5rem;">
+            <div style="text-align: left;">
+              <span class="seat-num-badge">值班台專屬席位 (上限 1 位)</span>
+              <div style="font-weight: 700; font-size: 0.9rem; color: #34d399;">🟢 值班台空缺中・開放站位</div>
+              <div style="font-size: 0.72rem; color: var(--text-muted);">一個時段僅限 1 位（採先填先站位原則）</div>
+            </div>
+            <button class="btn-seat-claim" data-date="${dateKey}" data-period="${period}" data-category="值班" style="width: auto; padding: 5px 14px; font-size: 0.8rem;">
+              ⚡ 先填先站位 (值班認領)
+            </button>
+          </div>
         </div>
       `;
-      container.appendChild(card);
-    });
-  }
+    }
 
-  // 綁定認領事件 (套用規則檢驗)
-  container.querySelectorAll('.btn-claim-shift').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const shiftId = e.target.getAttribute('data-shift-id');
-      const shift = shifts.find(item => item.id === shiftId);
-      if (!shift) return;
+    card.innerHTML = `
+      <div class="slot-group-header">
+        <div class="slot-period-tag">
+          <span>⏰ ${period}</span>
+          <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 500;">(${durationHours} 小時彈性時段)</span>
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+          <span class="capacity-pill ${cap.emsFull ? 'full' : 'available'}">
+            🚑 救護 ${cap.emsOccupants.length}/4 ${cap.emsFull ? '🔴滿額' : '🟢可站位'}
+          </span>
+          <span class="capacity-pill ${cap.deskFull ? 'full' : 'available'}">
+            🏢 值班 ${cap.deskOccupants.length}/1 ${cap.deskFull ? '🔴滿額' : '🟢可站位'}
+          </span>
+        </div>
+      </div>
 
-      const targetMember = getCurrentMember();
-      const validation = validateShiftBooking(targetMember, shift.date, shift.vehicle, shift.period, shift.shiftType, shift.id, false);
+      <div class="slot-section-title">
+        <span style="color: #38bdf8;">🚑 協勤救護（限額 4 位・隊上待命隨車出勤・先填先站位）</span>
+        <span style="color: var(--text-muted); font-size: 0.75rem;">
+          ${cap.emsFull ? '⚠️ 席次已滿' : `尚餘 ${cap.emsAvailable} 個席位`}
+        </span>
+      </div>
+      <div class="slot-seats-grid-4">
+        ${emsSeatsHtml}
+      </div>
 
-      if (!validation.ok) {
-        alert(validation.reason);
-        playFeedbackSound('alert');
-        return;
-      }
+      <div class="slot-section-title">
+        <span style="color: #c084fc;">🏢 協勤值班（限額 1 位・值班台・先填先站位）</span>
+        <span style="color: var(--text-muted); font-size: 0.75rem;">
+          ${cap.deskFull ? '⚠️ 席次已滿' : '尚有 1 個席位'}
+        </span>
+      </div>
+      <div class="slot-seats-grid-1">
+        ${deskSeatHtml}
+      </div>
+    `;
 
-      shift.memberName = targetMember.name;
-      shift.status = '已排班';
-      Store.set('shifts', shifts);
-      openDayDetailModal(day);
-      updateAllViews();
-      const vDisplay = shift.vehicle && shift.vehicle.includes('值班') ? shift.vehicle : '救護待命';
-      showToast(`成功認領 10月${dayStr}日 (${vDisplay} ${shift.period})！`, '🎉');
-      playFeedbackSound('success');
+    container.appendChild(card);
+  });
+
+  // 綁定「⚡ 先填先站位」點擊事件
+  container.querySelectorAll('.btn-seat-claim').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const dt = btn.getAttribute('data-date');
+      const pr = btn.getAttribute('data-period');
+      const cat = btn.getAttribute('data-category');
+      claimSlotInstantly(dt, pr, cat);
     });
   });
 
-  // 綁定取消事件 (雲端刪除修正)
-  container.querySelectorAll('.btn-cancel-shift').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const shiftId = e.target.getAttribute('data-shift-id');
-      cancelShift(shiftId);
-      openDayDetailModal(day);
+  // 綁定「🚨 遇突發狀況取消預定」點擊事件
+  container.querySelectorAll('.btn-seat-cancel').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const shiftId = btn.getAttribute('data-shift-id');
+      openEmergencyCancelModal(shiftId);
     });
   });
 
-  // 設定新增按鈕快速帶入這一天
+  // 設定新增自訂時段按鈕
   const btnAdd = document.getElementById('btnDayDetailAddShift');
   if (btnAdd) {
     btnAdd.onclick = () => {
@@ -1314,6 +1766,7 @@ function openDayDetailModal(day) {
       if (selectDate) selectDate.value = dateKey;
       document.getElementById('inputShiftMemberName').value = getCurrentMember().name;
       document.getElementById('modalClaimShift')?.classList.add('open');
+      updateClaimModalSlotMeter();
     };
   }
 
@@ -1521,6 +1974,7 @@ function renderSchedule() {
   renderScheduleListView();
   updatePersonalQuotaUI();
   renderOfficerAuditPanel();
+  renderReleasedFeed();
 }
 
 
@@ -2264,25 +2718,231 @@ function setupModals() {
     }
   }
 
+  // 即時計算並更新排班 Modal 內的時段席位儀表 (先填先站位即時回饋)
+  function updateClaimModalSlotMeter() {
+    const date = document.getElementById('inputShiftDate')?.value;
+    const catVal = document.getElementById('inputShiftCategory')?.value;
+    const period = document.getElementById('inputShiftPeriod')?.value;
+    const descEl = document.getElementById('modalSlotLiveStatusDesc');
+    const badgeEl = document.getElementById('modalSlotLiveStatusBadge');
+    const submitBtn = document.getElementById('btnSubmitClaimShift');
+    if (!date || !period || !descEl || !badgeEl) return;
+
+    const isDesk = catVal && catVal.includes('值班');
+    const status = getSlotCapacityStatus(date, period);
+
+    if (isDesk) {
+      if (status.deskFull) {
+        descEl.textContent = `該時段協勤值班已有同仁站位（${status.deskOccupants.map(s => s.memberName).join('、')}）！依規定一個時段僅限 1 位，請選擇其他時段。`;
+        descEl.style.color = '#f87171';
+        badgeEl.className = 'capacity-pill full';
+        badgeEl.textContent = '🔴 值班已額滿 (1/1)';
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.style.opacity = '0.5';
+        }
+      } else {
+        descEl.textContent = `協勤值班開放站位中（限額 1 位）。採先填先站位原則，送出即可成功卡位！`;
+        descEl.style.color = '#34d399';
+        badgeEl.className = 'capacity-pill available';
+        badgeEl.textContent = '🟢 尚可站位 (0/1)';
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.style.opacity = '1';
+        }
+      }
+    } else {
+      if (status.emsFull) {
+        descEl.textContent = `該時段協勤救護已達 4 位上限（已站位：${status.emsOccupants.map(s => s.memberName).join('、')}）！採先填先站位原則，已無法再登記。`;
+        descEl.style.color = '#f87171';
+        badgeEl.className = 'capacity-pill full';
+        badgeEl.textContent = '🔴 救護已額滿 (4/4)';
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.style.opacity = '0.5';
+        }
+      } else {
+        descEl.textContent = `協勤救護目前 ${status.emsOccupants.length}/4 位站位（尚餘 ${status.emsAvailable} 席開放）。採先填先站位原則，送出即可立即卡位！`;
+        descEl.style.color = '#38bdf8';
+        badgeEl.className = 'capacity-pill available';
+        badgeEl.textContent = `🟢 尚餘 ${status.emsAvailable} 席 (可站位)`;
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.style.opacity = '1';
+        }
+      }
+    }
+  }
+
+  // 建立 07:00 ~ 23:00 彈性自訂時段選單項目
+  function populateFlexibleTimeSelects() {
+    const selStart = document.getElementById('inputShiftStartTime');
+    const selEnd = document.getElementById('inputShiftEndTime');
+    if (!selStart || !selEnd) return;
+
+    selStart.innerHTML = '';
+    selEnd.innerHTML = '';
+
+    // 07:00 ~ 22:30 (每 30 分鐘一刻)
+    for (let m = 7 * 60; m <= 22 * 60 + 30; m += 30) {
+      const hStr = String(Math.floor(m / 60)).padStart(2, '0');
+      const mStr = String(m % 60).padStart(2, '0');
+      const val = `${hStr}:${mStr}`;
+      const opt = document.createElement('option');
+      opt.value = val;
+      opt.textContent = val;
+      selStart.appendChild(opt);
+    }
+
+    // 07:30 ~ 23:00 (每 30 分鐘一刻)
+    for (let m = 7 * 60 + 30; m <= 23 * 60; m += 30) {
+      const hStr = String(Math.floor(m / 60)).padStart(2, '0');
+      const mStr = String(m % 60).padStart(2, '0');
+      const val = `${hStr}:${mStr}`;
+      const opt = document.createElement('option');
+      opt.value = val;
+      opt.textContent = val;
+      selEnd.appendChild(opt);
+    }
+
+    selStart.value = '18:00';
+    selEnd.value = '23:00';
+    updateDurationBadge();
+  }
+
+  // 手動輸入與選單雙向同步更新處理器
+  const inputPeriod = document.getElementById('inputShiftPeriod');
+  const periodHint = document.getElementById('periodInputHint');
+
+  function handleManualPeriodInput(isFinal = false) {
+    if (!inputPeriod) return;
+    const raw = inputPeriod.value.trim();
+    const parsed = parseTimePeriod(raw);
+
+    if (parsed.valid) {
+      const dur = (parsed.endMin - parsed.startMin) / 60;
+      const badge = document.getElementById('shiftDurationBadge');
+      if (badge) {
+        badge.textContent = `⏱️ 協勤時長：${dur.toFixed(1)} 小時`;
+      }
+      if (periodHint) {
+        periodHint.innerHTML = `✅ 格式正確 (${parsed.formatted}，共 ${dur.toFixed(1)}h)`;
+        periodHint.style.color = '#34d399';
+      }
+
+      // 若為失焦或選單觸發且與輸入不一致，標準化顯示
+      if (isFinal && parsed.formatted !== raw) {
+        inputPeriod.value = parsed.formatted;
+      }
+
+      // 同步輔助下拉選單
+      const selStart = document.getElementById('inputShiftStartTime');
+      const selEnd = document.getElementById('inputShiftEndTime');
+      const sh = String(Math.floor(parsed.startMin / 60)).padStart(2, '0');
+      const sm = String(parsed.startMin % 60).padStart(2, '0');
+      const eh = String(Math.floor(parsed.endMin / 60)).padStart(2, '0');
+      const em = String(parsed.endMin % 60).padStart(2, '0');
+      if (selStart) selStart.value = `${sh}:${sm}`;
+      if (selEnd) selEnd.value = `${eh}:${em}`;
+
+      // 同步高亮快捷標籤
+      document.querySelectorAll('.btn-preset-period').forEach(btn => {
+        const bStart = btn.getAttribute('data-start');
+        const bEnd = btn.getAttribute('data-end');
+        if (bStart === `${sh}:${sm}` && bEnd === `${eh}:${em}`) {
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
+      });
+
+      updateClaimModalSlotMeter();
+    } else {
+      if (periodHint) {
+        if (!raw) {
+          periodHint.innerHTML = `✍️ 請手動輸入時段，例如 09-15`;
+          periodHint.style.color = 'var(--text-muted)';
+        } else {
+          periodHint.innerHTML = `⚠️ 格式解析中（例如直接輸入 09-15、07-15、09:30-15:00）`;
+          periodHint.style.color = '#fbbf24';
+        }
+      }
+    }
+  }
+
+  // 同步更新時數標籤與 inputShiftPeriod
+  function updateDurationBadge() {
+    const selStart = document.getElementById('inputShiftStartTime');
+    const selEnd = document.getElementById('inputShiftEndTime');
+    if (!selStart || !selEnd || !inputPeriod) return;
+
+    let sVal = selStart.value;
+    let eVal = selEnd.value;
+    const tStart = parseTimePeriod(sVal + '-23:00').startMin;
+    const tEnd = parseTimePeriod('07:00-' + eVal).endMin;
+
+    if (tEnd <= tStart) {
+      const safeEndMin = Math.min(23 * 60, tStart + 60);
+      const safeH = String(Math.floor(safeEndMin / 60)).padStart(2, '0');
+      const safeM = String(safeEndMin % 60).padStart(2, '0');
+      selEnd.value = `${safeH}:${safeM}`;
+      eVal = selEnd.value;
+    }
+
+    inputPeriod.value = `${sVal}-${eVal}`;
+    handleManualPeriodInput(true);
+  }
+
+  // 提供全域同步設定自訂時段函式 (支援 09-15 等任意字串)
+  window.syncFlexiblePeriodInputs = function(start, end) {
+    if (end) {
+      if (inputPeriod) inputPeriod.value = `${start}-${end}`;
+    } else if (start) {
+      if (inputPeriod) inputPeriod.value = start;
+    }
+    handleManualPeriodInput(true);
+  };
+
+  // 監聽手動直接文字輸入事件
+  inputPeriod?.addEventListener('input', () => handleManualPeriodInput(false));
+  inputPeriod?.addEventListener('blur', () => handleManualPeriodInput(true));
+  inputPeriod?.addEventListener('change', () => handleManualPeriodInput(true));
+
+  // 監聽下拉選單變更
+  document.getElementById('inputShiftStartTime')?.addEventListener('change', updateDurationBadge);
+  document.getElementById('inputShiftEndTime')?.addEventListener('change', updateDurationBadge);
+
+  // 監聽快速熱門彈性時段快捷鍵 (例如 09-15, 09-13, 07-15, 17-22 等)
+  document.querySelectorAll('.btn-preset-period').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const s = btn.getAttribute('data-start');
+      const e = btn.getAttribute('data-end');
+      window.syncFlexiblePeriodInputs(s, e);
+    });
+  });
+
+  // 初始化彈性時段選單
+  populateFlexibleTimeSelects();
+
   // 監聽勤務類別變更 (連動補定訓警語與預設值)
   const selectCat = document.getElementById('inputShiftCategory');
   const alertMakeup = document.getElementById('makeupTrainingAlertBox');
   const selectType = document.getElementById('inputShiftType');
-  const selectPeriod = document.getElementById('inputShiftPeriod');
 
   selectCat?.addEventListener('change', (e) => {
     const val = e.target.value;
     if (val.includes('補定訓')) {
       if (alertMakeup) alertMakeup.style.display = 'block';
       if (selectType) selectType.value = '補定訓';
-      if (selectPeriod && selectPeriod.value === '18:00-23:00') {
-        selectPeriod.value = '18:00-22:00';
-      }
+      window.syncFlexiblePeriodInputs('18:00', '22:00');
     } else {
       if (alertMakeup) alertMakeup.style.display = 'none';
       if (selectType) selectType.value = val.includes('值班') ? '幹部值班' : '自排班';
     }
+    updateClaimModalSlotMeter();
   });
+
+  document.getElementById('inputShiftDate')?.addEventListener('change', updateClaimModalSlotMeter);
 
   // 監聽警消指派隊員選單變更
   document.getElementById('selectShiftMemberAdmin')?.addEventListener('change', (e) => {
@@ -2341,6 +3001,7 @@ function setupModals() {
     document.getElementById('inputShiftMemberName').value = targetMem.name;
     updateModalQuotaPreview(targetMem);
     modalClaim.classList.add('open');
+    updateClaimModalSlotMeter();
   }
 
   document.getElementById('btnOpenClaimShiftModal')?.addEventListener('click', () => {
@@ -2461,7 +3122,14 @@ function setupModals() {
     e.preventDefault();
     const date = document.getElementById('inputShiftDate').value;
     const catVal = document.getElementById('inputShiftCategory').value;
-    const period = document.getElementById('inputShiftPeriod').value;
+    const rawPeriod = document.getElementById('inputShiftPeriod').value.trim();
+    const parsedTime = parseTimePeriod(rawPeriod);
+    if (!parsedTime.valid) {
+      alert(`⚠️【時段格式錯誤】\n您輸入的時段為：「${rawPeriod}」\n\n支援格式範例：\n• 09-15 (表示 09:00 至 15:00)\n• 07-15\n• 17-22\n• 09:30-15:00\n請確認開始時間早於結束時間！`);
+      playFeedbackSound('alert');
+      return;
+    }
+    const period = parsedTime.formatted;
     const shiftType = document.getElementById('inputShiftType').value;
     
     let memberName = document.getElementById('inputShiftMemberName').value;
@@ -2496,28 +3164,48 @@ function setupModals() {
     const dVal = Number(dateParts[2]);
     const weekdayName = ['日', '一', '二', '三', '四', '五', '六'][new Date(gregYear, mIdx, dVal).getDay()];
 
-    const newShift = {
-      id: `s-${Date.now()}`,
-      date,
-      day: dayNum,
-      dayOfWeek: weekdayName,
-      vehicle,
-      period,
-      memberName: targetMember.name,
-      status: '已排班',
-      shiftType,
-      isMakeupTraining: catVal.includes('補定訓')
-    };
+    // 尋找此時段是否有現成空缺 (例如突發取消釋出之班次)，若有則直接認領
+    let existingVacant = shifts.find(s => s.date === date && s.period === period && (!s.memberName || s.status === '缺協勤') && (vehicle.includes('值班') ? s.vehicle.includes('值班') : !s.vehicle.includes('值班')));
 
-    shifts.push(newShift);
+    if (existingVacant) {
+      existingVacant.memberName = targetMember.name;
+      existingVacant.status = '已排班';
+      existingVacant.shiftType = shiftType;
+      existingVacant.isMakeupTraining = catVal.includes('補定訓');
+      pushShiftToSupabase(existingVacant);
+    } else {
+      const newShift = {
+        id: `s-${Date.now()}`,
+        date,
+        day: dayNum,
+        dayOfWeek: weekdayName,
+        vehicle,
+        period,
+        memberName: targetMember.name,
+        status: '已排班',
+        shiftType,
+        isMakeupTraining: catVal.includes('補定訓')
+      };
+      shifts.push(newShift);
+      pushShiftToSupabase(newShift);
+    }
+
     Store.set('shifts', shifts);
-    pushShiftToSupabase(newShift);
 
     modalClaim.removeAttribute('data-officer-proxy');
     modalClaim.classList.remove('open');
     updateAllViews();
     playFeedbackSound('success');
-    showToast(`排班成功！${targetMember.name} 於 ${date} (${vehicle} ${period}) 已登記完成`, '🎉');
+    showToast(`⚡ 先填先站位成功！${targetMember.name} 於 ${date} (${vehicle} ${period}) 已完成登記`, '🎉');
+  });
+
+  // 表單 2.5: 遇突發狀況取消預定 (即刻釋出席位)
+  document.getElementById('formCancelShift')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const shiftId = document.getElementById('cancelModalShiftId').value;
+    const reasonCategory = document.getElementById('cancelReasonCategory').value;
+    const reasonNote = document.getElementById('cancelReasonNote').value.trim();
+    executeEmergencyCancel(shiftId, reasonCategory, reasonNote);
   });
 
   // 警消最高權限 - 補建協勤打卡按鈕
