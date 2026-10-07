@@ -89,6 +89,7 @@ async function syncFromSupabase() {
   if (!supabaseClient) return;
   try {
     const { data: remoteShifts, error: sErr } = await supabaseClient.from('shifts').select('*');
+    if (!sErr && remoteShifts && remoteShifts.length > 0) {
       shifts = remoteShifts.map(s => {
         let v = s.vehicle;
         if (!v || v === '博館91' || v === '博館92' || v.includes('91') || v.includes('92')) {
