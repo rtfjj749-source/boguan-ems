@@ -1,4 +1,4 @@
-import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS } from './data.js?v=20261007_v5';
+import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS } from './data.js?v=20261007_v6';
 
 // ==========================================
 // 1. 資料持久化管理 (LocalStorage)
@@ -23,6 +23,29 @@ class Store {
 }
 
 let members = Store.get('members', INITIAL_MEMBERS);
+// 確保分隊警消承辦人 (m0) 存在於 members 名單中
+if (!members.some(m => m.id === 'm0')) {
+  const m0 = INITIAL_MEMBERS.find(m => m.id === 'm0') || {
+    id: 'm0',
+    name: '分隊警消承辦人',
+    idNo: 'B120000001',
+    role: '分隊警消承辦人',
+    level: '分隊承辦人 (最高全域管理權限)',
+    avatar: '👮‍♂️',
+    phone: '04-23210119',
+    joined: '博館分隊',
+    totalHours: 999.0,
+    totalDispatches: 999,
+    roscCount: 99,
+    ecgCount: 99,
+    ivCount: 99,
+    isRestricted: false,
+    restrictionUntil: null,
+    makeupTrainingStatus: 'eligible'
+  };
+  members.unshift(m0);
+  Store.set('members', members);
+}
 let attendance = Store.get('attendance', INITIAL_ATTENDANCE).map(a => {
   if (a.note && (a.note.includes('91車') || a.note.includes('92車'))) {
     return { ...a, note: a.note.replace(/9[12]車/g, '救護協勤') };
@@ -203,37 +226,109 @@ function getCurrentMember() {
   return members.find(m => m.id === currentMemberId) || members[0];
 }
 
+// 判斷當前登入者是否具備分隊警消承辦人最高管理權限
+function isSuperAdmin() {
+  const m = getCurrentMember();
+  if (!m) return false;
+  return m.id === 'm0' || m.role.includes('警消') || m.role.includes('承辦人');
+}
+
+// 判斷當前登入者是否具備小隊幹部或警消承辦人權限
+function isCurrentOfficer() {
+  const m = getCurrentMember();
+  if (!m) return false;
+  return isSuperAdmin() || m.role.includes('幹部') || m.role.includes('小隊長') || m.role.includes('助理') || 
+         m.name === '林振傑' || m.name === '張宥安' || m.name === '彭凱琳';
+}
+
 function initMemberSelector() {
   const select = document.getElementById('memberSelect');
   const modalMemberSelect = document.getElementById('inputDispatchMember');
+  const adminAttSelect = document.getElementById('adminAttMemberSelect');
+  const adminShiftSelect = document.getElementById('selectShiftMemberAdmin');
   
-  select.innerHTML = '';
-  modalMemberSelect.innerHTML = '';
-  
+  if (select) select.innerHTML = '';
+  if (modalMemberSelect) modalMemberSelect.innerHTML = '';
+  if (adminAttSelect) adminAttSelect.innerHTML = '';
+  if (adminShiftSelect) adminShiftSelect.innerHTML = '';
+
+  const adminGroup = document.createElement('optgroup');
+  adminGroup.label = '👑 分隊管理長官 / 承辦人';
+  const volunteerGroup = document.createElement('optgroup');
+  volunteerGroup.label = '🚒 救護義消志工同仁';
+
   members.forEach(m => {
+    const isAdm = m.id === 'm0' || m.role.includes('警消') || m.role.includes('承辦人');
     const opt = document.createElement('option');
     opt.value = m.id;
-    opt.textContent = `${m.name} (${m.level})`;
+    opt.textContent = isAdm ? `👮‍♂️ ${m.name} (${m.level})` : `${m.name} (${m.level})`;
     if (m.id === currentMemberId) opt.selected = true;
-    select.appendChild(opt);
 
-    const opt2 = document.createElement('option');
-    opt2.value = m.name;
-    opt2.textContent = `${m.name} (${m.level})`;
-    modalMemberSelect.appendChild(opt2);
+    if (isAdm) {
+      adminGroup.appendChild(opt);
+    } else {
+      volunteerGroup.appendChild(opt);
+    }
+
+    if (modalMemberSelect) {
+      const opt2 = document.createElement('option');
+      opt2.value = m.name;
+      opt2.textContent = `${m.name} (${m.level})`;
+      modalMemberSelect.appendChild(opt2);
+    }
+
+    if (adminAttSelect) {
+      const opt3 = document.createElement('option');
+      opt3.value = m.id;
+      opt3.textContent = `${m.name} (${m.role}・${m.level})`;
+      adminAttSelect.appendChild(opt3);
+    }
+
+    if (adminShiftSelect) {
+      const opt4 = document.createElement('option');
+      opt4.value = m.name;
+      opt4.textContent = `${m.name} (${m.level})`;
+      adminShiftSelect.appendChild(opt4);
+    }
   });
 
-  select.addEventListener('change', (e) => {
-    currentMemberId = e.target.value;
-    Store.set('currentMemberId', currentMemberId);
-    updateAllViews();
-    showToast(`已切換至隊員：${getCurrentMember().name}`, '👤');
-  });
+  if (select) {
+    select.appendChild(adminGroup);
+    select.appendChild(volunteerGroup);
+
+    select.addEventListener('change', (e) => {
+      currentMemberId = e.target.value;
+      Store.set('currentMemberId', currentMemberId);
+      updateAllViews();
+      const cur = getCurrentMember();
+      const isAdm = isSuperAdmin();
+      showToast(isAdm ? `已切換至【分隊警消承辦人】(最高全域管理權限模式已啟動)` : `已切換至隊員：${cur.name}`, isAdm ? '👮‍♂️' : '👤');
+    });
+  }
 }
 
 function updateDutyHero() {
   const cur = getCurrentMember();
-  document.getElementById('currentMemberRoleBadge').textContent = `⭐ ${cur.level}`;
+  const isAdm = isSuperAdmin();
+  const badge = document.getElementById('currentMemberRoleBadge');
+  const adminBanner = document.getElementById('adminModeBanner');
+  const btnAdminAddAtt = document.getElementById('btnAdminAddAttendance');
+
+  if (isAdm) {
+    if (badge) {
+      badge.className = 'role-badge super-admin';
+      badge.textContent = `👮‍♂️ 警消承辦人 (最高全域管理權限)`;
+    }
+    if (adminBanner) adminBanner.style.display = 'flex';
+    if (btnAdminAddAtt) btnAdminAddAtt.style.display = 'inline-flex';
+  } else {
+    if (badge) {
+      badge.className = 'role-badge';
+      badge.textContent = `⭐ ${cur.level}`;
+    }
+    if (adminBanner) adminBanner.style.display = 'none';
+    if (btnAdminAddAtt) btnAdminAddAtt.style.display = 'none';
+  }
   
   const statusPill = document.getElementById('dutyStatusPill');
   const statusText = document.getElementById('dutyStatusText');
@@ -291,6 +386,12 @@ function renderRecentAttendance() {
   if (!tbody) return;
   tbody.innerHTML = '';
 
+  const isAdm = isSuperAdmin();
+  const thAdminAtt = document.getElementById('thAdminAttAction');
+  if (thAdminAtt) thAdminAtt.style.display = isAdm ? 'table-cell' : 'none';
+  const btnAdminAdd = document.getElementById('btnAdminAddAttendance');
+  if (btnAdminAdd) btnAdminAdd.style.display = isAdm ? 'inline-flex' : 'none';
+
   // 若當前有隊員在隊協勤中，置頂展示綠燈動態
   if (activeDuty) {
     const activeTr = document.createElement('tr');
@@ -305,6 +406,7 @@ function renderRecentAttendance() {
       <td>—</td>
       <td style="color: var(--text-muted); font-size: 0.8rem;">${activeDuty.isBackfilled ? `補登到隊 (${activeDuty.backfillReason})` : '現場手機簽到'}</td>
       <td><span style="background: rgba(16,185,129,0.25); color: #34d399; font-size: 0.75rem; padding: 2px 8px; border-radius: 99px; font-weight: 700;">值勤中</span></td>
+      ${isAdm ? '<td><span style="font-size: 0.75rem; color: #34d399;">協勤進行中</span></td>' : ''}
     `;
     tbody.appendChild(activeTr);
   }
@@ -321,9 +423,32 @@ function renderRecentAttendance() {
       <td>${att.dispatches} 趟</td>
       <td style="color: var(--text-muted); font-size: 0.8rem;">${att.note || '救護協勤'}</td>
       <td><span style="background: rgba(16,185,129,0.15); color: #34d399; font-size: 0.75rem; padding: 2px 8px; border-radius: 99px;">已核可</span></td>
+      ${isAdm ? `
+        <td>
+          <div style="display: flex; gap: 4px;">
+            <button class="btn-admin-edit btn-admin-edit-att" data-id="${att.id}">✏️ 編輯</button>
+            <button class="btn-admin-delete btn-admin-delete-att" data-id="${att.id}">🗑️ 刪除</button>
+          </div>
+        </td>
+      ` : ''}
     `;
     tbody.appendChild(tr);
   });
+
+  if (isAdm) {
+    tbody.querySelectorAll('.btn-admin-edit-att').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = e.currentTarget.getAttribute('data-id');
+        openAdminEditAttendanceModal(id);
+      });
+    });
+    tbody.querySelectorAll('.btn-admin-delete-att').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = e.currentTarget.getAttribute('data-id');
+        deleteAttendanceRecord(id);
+      });
+    });
+  }
 }
 
 // 救護出勤紀錄簿卡片列表
@@ -334,6 +459,8 @@ function renderDispatchList() {
   const filterTag = document.getElementById('filterTagSelect').value;
 
   container.innerHTML = '';
+
+  const isAdm = isSuperAdmin();
 
   const filtered = dispatches.filter(d => {
     if (filterVehicle !== 'ALL' && d.vehicle !== filterVehicle) return false;
@@ -372,11 +499,17 @@ function renderDispatchList() {
 
     card.innerHTML = `
       <div class="dispatch-header">
-        <div style="display: flex; align-items: center; gap: 0.65rem;">
+        <div style="display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap;">
           <span class="case-id-tag">${d.caseNo}</span>
           <span class="vehicle-pill ${vehicleClass}">${d.vehicle}</span>
           <span style="font-weight: 600; font-size: 0.95rem;">${d.resultType}</span>
           ${d.specialTag ? `<span style="background: rgba(245,158,11,0.2); color: #fbbf24; border: 1px solid rgba(245,158,11,0.4); font-size: 0.75rem; padding: 2px 8px; border-radius: 99px; font-weight: 700;">${d.specialTag}</span>` : ''}
+          ${isAdm ? `
+            <div style="display: inline-flex; gap: 4px; margin-left: auto;">
+              <button class="btn-admin-edit btn-admin-edit-disp" data-id="${d.id}" style="font-size: 0.72rem; padding: 2px 6px;">✏️ 編輯</button>
+              <button class="btn-admin-delete btn-admin-delete-disp" data-id="${d.id}" style="font-size: 0.72rem; padding: 2px 6px;">🗑️ 刪除</button>
+            </div>
+          ` : ''}
         </div>
         <div style="font-size: 0.85rem; color: var(--text-muted);">
           <span>📅 ${d.date}</span> ｜ <span>⏰ ${d.departureTime} ~ ${d.returnTime}</span>
@@ -398,6 +531,21 @@ function renderDispatchList() {
     `;
     container.appendChild(card);
   });
+
+  if (isAdm) {
+    container.querySelectorAll('.btn-admin-edit-disp').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = e.currentTarget.getAttribute('data-id');
+        openEditDispatchModal(id);
+      });
+    });
+    container.querySelectorAll('.btn-admin-delete-disp').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = e.currentTarget.getAttribute('data-id');
+        deleteDispatchRecord(id);
+      });
+    });
+  }
 }
 
 // 榮譽徽章牆渲染
@@ -634,14 +782,6 @@ function renderVisualCalendar() {
 // ==========================================
 const CURRENT_SYSTEM_DATE = '115-10-07';
 
-// 判斷當前登入者是否具備小隊幹部權限
-function isCurrentOfficer() {
-  const m = getCurrentMember();
-  if (!m) return false;
-  return m.role.includes('幹部') || m.role.includes('小隊長') || m.role.includes('助理') || 
-         m.name === '林振傑' || m.name === '張宥安' || m.name === '彭凱琳';
-}
-
 // 取得特定隊員未完成/未來的預約班次數量 (>= CURRENT_SYSTEM_DATE)
 function getMemberFutureShifts(memberName) {
   return shifts.filter(s => s.memberName === memberName && s.date >= CURRENT_SYSTEM_DATE && s.status !== '缺席');
@@ -677,26 +817,28 @@ function isTimeOverlap(p1, p2) {
 // 驗證預約規則
 // 返回 { ok: boolean, reason: string }
 function validateShiftBooking(targetMember, date, vehicle, period, shiftType, ignoreShiftId = null, isOfficerOverride = false) {
+  const isAdm = isSuperAdmin();
+
   // 1. 服勤時間檢查 (07:00 ~ 23:00)
   const timeInfo = parseTimePeriod(period);
-  if (!timeInfo.valid || !isWithinAllowedHours(timeInfo.startMin, timeInfo.endMin)) {
+  if (!timeInfo.valid || (!isWithinAllowedHours(timeInfo.startMin, timeInfo.endMin) && !isAdm)) {
     return { 
       ok: false, 
       reason: '【服勤時間不合規範】\n依分隊協勤規定：可服勤時間僅限 07:00 至 23:00 之間！夜間 23:00 後至清晨 07:00 前不開放協勤填寫。' 
     };
   }
 
-  // 2. 管制期檢查 (階段二處分鎖定)
-  if (targetMember.isRestricted && !isOfficerOverride) {
+  // 2. 管制期檢查 (階段二處分鎖定) - 警消最高管理者與幹部代填可豁免
+  if (targetMember.isRestricted && !isOfficerOverride && !isAdm) {
     return {
       ok: false,
       reason: `⛔【處分管制中・禁止自行填班】\n隊員：${targetMember.name}\n管制期限：至 ${targetMember.restrictionUntil || '115-12-07'} 止（自刪除日起2個月）\n\n處分原因：超過三班且屬故意累犯，依規定於管制期內「無法自行填班，需透過小隊幹部填寫班表」！\n\n⚠️ 重大警告：管制期內如自行填班，將提請幹部會議開會討論決議是否依《義勇消防組織編組訓練演習服勤辦法》第八條第一項第7款予以解聘！\n請直接洽詢分隊幹部協助填寫。`
     };
   }
 
-  // 3. 每人預約上限最多 3 班 (含跨月)
+  // 3. 每人預約上限最多 3 班 (含跨月) - 警消最高管理者與幹部代填可豁免
   const currentFuture = getMemberFutureShifts(targetMember.name).filter(s => s.id !== ignoreShiftId);
-  if (currentFuture.length >= 3 && !isOfficerOverride) {
+  if (currentFuture.length >= 3 && !isOfficerOverride && !isAdm) {
     return {
       ok: false,
       reason: `⚠️【預約額度已達上限】\n每位同仁每次預約上限最多 3 班（含跨月）！\n您目前已有 ${currentFuture.length} 班未協勤班次：\n${currentFuture.map(s => `• ${s.date} (${s.vehicle.includes('值班') ? s.vehicle : '救護協勤'} ${s.period})`).join('\n')}\n\n需待協勤完畢一班後，方可再往後填寫一班！`
@@ -707,7 +849,7 @@ function validateShiftBooking(targetMember, date, vehicle, period, shiftType, ig
   const isMakeup = vehicle.includes('補定訓') || shiftType.includes('補定訓');
   if (isMakeup) {
     // 檢查是否曾臨時取消而被視為缺席
-    if (targetMember.makeupTrainingStatus === 'cancelled_absent') {
+    if (targetMember.makeupTrainingStatus === 'cancelled_absent' && !isAdm) {
       return {
         ok: false,
         reason: '⛔【不得再補值班】\n依分隊值班注意事項第 2 點規定：補定訓如已登記於值班欄位，臨時取消視為「缺席定訓」，亦不可再次補值班！'
@@ -715,7 +857,7 @@ function validateShiftBooking(targetMember, date, vehicle, period, shiftType, ig
     }
     // 補定訓每次必須剛好 4 小時
     const durationHours = (timeInfo.endMin - timeInfo.startMin) / 60;
-    if (durationHours !== 4) {
+    if (durationHours !== 4 && !isAdm) {
       return {
         ok: false,
         reason: `【補定訓時數限制】\n依分隊值班注意事項第 2 點：補定訓改為值值班台，每次固定為 4 小時！您選擇的時段為 ${durationHours} 小時。`
@@ -729,7 +871,7 @@ function validateShiftBooking(targetMember, date, vehicle, period, shiftType, ig
 
   // (A) 救護班 (分隊待命協勤)：同時段最多 4 位同仁，哪台車出勤就隨車出勤
   const isEms = !vehicle.includes('值班');
-  if (isEms) {
+  if (isEms && !isAdm) {
     const overlappingEms = overlappingShifts.filter(s => !s.vehicle.includes('值班'));
     if (overlappingEms.length >= 4) {
       return {
@@ -741,7 +883,7 @@ function validateShiftBooking(targetMember, date, vehicle, period, shiftType, ig
 
   // (B) 值班台 (含一般值班、補定訓)：同時段僅限 1 位同仁
   const isDesk = vehicle.includes('值班') || shiftType.includes('值班') || isMakeup;
-  if (isDesk) {
+  if (isDesk && !isAdm) {
     const overlappingDesk = overlappingShifts.filter(s => s.vehicle.includes('值班') || s.shiftType.includes('值班') || s.vehicle.includes('補定訓'));
     if (overlappingDesk.length >= 1) {
       return {
@@ -770,10 +912,11 @@ function cancelShift(shiftId) {
   if (!shift) return;
   const cur = getCurrentMember();
   const isOfficer = isCurrentOfficer();
+  const isAdm = isSuperAdmin();
 
-  // 權限檢查：本人或幹部
-  if (shift.memberName !== cur.name && !isOfficer) {
-    alert('非本人或小隊幹部無法取消此班次！');
+  // 權限檢查：本人、幹部或警消承辦人
+  if (shift.memberName !== cur.name && !isOfficer && !isAdm) {
+    alert('非本人或分隊幹部/承辦人無法取消此班次！');
     return;
   }
 
@@ -936,6 +1079,9 @@ function renderOfficerAuditPanel() {
           <button class="btn-secondary btn-officer-proxy-book" data-member-name="${m.name}" style="font-size: 0.72rem; padding: 2px 6px;">
             📝 幹部代填班
           </button>
+          <button class="btn-secondary btn-admin-edit-member-btn" data-member-id="${m.id}" style="font-size: 0.72rem; padding: 2px 6px; color: #fbbf24; border-color: rgba(245,158,11,0.4);">
+            ✏️ 編輯隊員檔案
+          </button>
         </div>
       </td>
     `;
@@ -943,6 +1089,12 @@ function renderOfficerAuditPanel() {
   });
 
   // 綁定幹部事件
+  tbody.querySelectorAll('.btn-admin-edit-member-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const id = e.currentTarget.getAttribute('data-member-id');
+      openAdminEditMemberModal(id);
+    });
+  });
   tbody.querySelectorAll('.btn-officer-remind').forEach(btn => {
     btn.addEventListener('click', () => {
       const name = btn.getAttribute('data-member-name');
@@ -1426,10 +1578,20 @@ function renderOfficerExecutiveDashboard() {
           ${m.isRestricted 
             ? `<span style="background: rgba(239,68,68,0.2); color: #f87171; padding: 2px 6px; border-radius: 99px; font-size: 0.75rem; font-weight: 700;">⛔ 處分管制中</span>` 
             : `<span style="background: rgba(16,185,129,0.15); color: #34d399; padding: 2px 6px; border-radius: 99px; font-size: 0.75rem;">✅ 正常合規</span>`}
+          ${isSuperAdmin() ? `<button class="btn-admin-edit btn-admin-edit-mem-kpi" data-id="${m.id}" style="margin-left: 6px; font-size: 0.72rem; padding: 2px 6px;">✏️ 編輯</button>` : ''}
         </td>
       `;
       tbody.appendChild(tr);
     });
+
+    if (isSuperAdmin()) {
+      tbody.querySelectorAll('.btn-admin-edit-mem-kpi').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const id = e.currentTarget.getAttribute('data-id');
+          openAdminEditMemberModal(id);
+        });
+      });
+    }
   }
 
   // Render Charts if Chart.js is loaded
@@ -1855,29 +2017,173 @@ function setupPunchEvents() {
 }
 
 // ==========================================
-// 5. 救護出勤登記 Form 與 Modal
+// 5. 警消最高全域管理權限 CRUD 核心操作與彈窗
 // ==========================================
+function openAdminEditAttendanceModal(recordId = null) {
+  const modal = document.getElementById('modalAdminEditAttendance');
+  if (!modal) return;
+  const title = document.getElementById('adminAttModalTitle');
+  const inputId = document.getElementById('adminAttRecordId');
+  const selectMem = document.getElementById('adminAttMemberSelect');
+  const inputDate = document.getElementById('adminAttDate');
+  const inputSignIn = document.getElementById('adminAttSignIn');
+  const inputSignOut = document.getElementById('adminAttSignOut');
+  const inputHours = document.getElementById('adminAttHours');
+  const inputDisp = document.getElementById('adminAttDispatches');
+  const inputPat = document.getElementById('adminAttPatients');
+  const inputNote = document.getElementById('adminAttNote');
+  const btnDel = document.getElementById('btnAdminAttDeleteCurrent');
+
+  if (recordId) {
+    const att = attendance.find(a => a.id === recordId);
+    if (!att) return;
+    if (title) title.textContent = `👮‍♂️ 警消承辦人 - 編輯協勤簽到退紀錄`;
+    if (inputId) inputId.value = att.id;
+    if (selectMem) {
+      const memObj = members.find(m => m.name === att.memberName) || members.find(m => m.id === att.memberId);
+      selectMem.value = memObj ? memObj.id : (members[0]?.id || 'm1');
+    }
+    if (inputDate) inputDate.value = att.date || '115-10-07';
+    if (inputSignIn) inputSignIn.value = att.signIn || '18:00';
+    if (inputSignOut) inputSignOut.value = att.signOut || '23:00';
+    if (inputHours) inputHours.value = att.hours != null ? att.hours : 5.0;
+    if (inputDisp) inputDisp.value = att.dispatches != null ? att.dispatches : 0;
+    if (inputPat) inputPat.value = att.patients != null ? att.patients : 0;
+    if (inputNote) inputNote.value = att.note || '';
+    if (btnDel) {
+      btnDel.style.display = 'inline-block';
+      btnDel.onclick = () => {
+        deleteAttendanceRecord(att.id);
+        modal.classList.remove('open');
+      };
+    }
+  } else {
+    // 新增手動補建模式
+    if (title) title.textContent = `👮‍♂️ 警消承辦人 - 補建/代登協勤簽到退紀錄`;
+    if (inputId) inputId.value = '';
+    if (selectMem) selectMem.value = members[1]?.id || members[0]?.id || 'm1';
+    if (inputDate) inputDate.value = CURRENT_SYSTEM_DATE || '115-10-07';
+    if (inputSignIn) inputSignIn.value = '18:00';
+    if (inputSignOut) inputSignOut.value = '23:00';
+    if (inputHours) inputHours.value = 5.0;
+    if (inputDisp) inputDisp.value = 2;
+    if (inputPat) inputPat.value = 2;
+    if (inputNote) inputNote.value = '警消承辦人手動補登協勤';
+    if (btnDel) btnDel.style.display = 'none';
+  }
+
+  modal.classList.add('open');
+}
+
+function deleteAttendanceRecord(id) {
+  const att = attendance.find(a => a.id === id);
+  if (!att) return;
+  const ok = confirm(`⚠️【警消最高權限・刪除確認】\n您確定要刪除【${att.memberName}】於 ${att.date} 的協勤簽到退紀錄嗎？\n\n（時數：${att.hours}hr ｜ 出勤：${att.dispatches}趟）\n刪除後將重新計算全月總時數與誤餐費。`);
+  if (!ok) return;
+
+  attendance = attendance.filter(a => a.id !== id);
+  Store.set('attendance', attendance);
+  updateAllViews();
+  showToast(`已成功刪除該筆協勤打卡紀錄！`, '🗑️');
+  playFeedbackSound('success');
+}
+
+function openAdminEditMemberModal(memberId) {
+  const mem = members.find(m => m.id === memberId);
+  if (!mem) return;
+  const modal = document.getElementById('modalAdminEditMember');
+  if (!modal) return;
+
+  document.getElementById('adminMemberId').value = mem.id;
+  document.getElementById('adminMemberName').value = mem.name;
+  document.getElementById('adminMemberIdNo').value = mem.idNo || '';
+  document.getElementById('adminMemberLevel').value = mem.level || 'EMT-2';
+  document.getElementById('adminMemberRole').value = mem.role || '救護義消隊員';
+  document.getElementById('adminMemberPhone').value = mem.phone || '';
+  document.getElementById('adminMemberTotalHours').value = mem.totalHours != null ? mem.totalHours : 0;
+  document.getElementById('adminMemberTotalDispatches').value = mem.totalDispatches != null ? mem.totalDispatches : 0;
+  document.getElementById('adminMemberRoscCount').value = mem.roscCount != null ? mem.roscCount : 0;
+  document.getElementById('adminMemberEcgCount').value = mem.ecgCount != null ? mem.ecgCount : 0;
+  document.getElementById('adminMemberRestricted').value = mem.isRestricted ? 'true' : 'false';
+  document.getElementById('adminMemberRestrictionUntil').value = mem.restrictionUntil || '';
+  document.getElementById('adminMemberMakeupStatus').value = mem.makeupTrainingStatus || 'eligible';
+
+  modal.classList.add('open');
+}
+
+function openEditDispatchModal(id) {
+  const d = dispatches.find(item => item.id === id);
+  if (!d) return;
+  const modal = document.getElementById('modalNewDispatch');
+  if (!modal) return;
+  modal.setAttribute('data-edit-id', d.id);
+  
+  const title = modal.querySelector('h3');
+  if (title) title.textContent = `✏️ 編輯救護出勤紀錄 (${d.caseNo})`;
+
+  document.getElementById('inputCaseNo').value = d.caseNo;
+  document.getElementById('inputVehicle').value = d.vehicle || '博館91';
+  document.getElementById('inputDepartureTime').value = d.departureTime || '20:00';
+  document.getElementById('inputReturnTime').value = d.returnTime || '21:10';
+  document.getElementById('inputLocation').value = d.location || '';
+  if (d.memberNames && d.memberNames[0]) {
+    document.getElementById('inputDispatchMember').value = d.memberNames[0];
+  }
+  document.getElementById('inputResultType').value = d.resultType || '送醫';
+  document.getElementById('inputHospital').value = d.hospital || '中國醫藥大學附設醫院';
+  document.getElementById('inputComplaint').value = d.chiefComplaint || '';
+
+  // checkboxes
+  document.querySelectorAll('input[name="treatment"]').forEach(cb => {
+    cb.checked = d.treatments && d.treatments.includes(cb.value);
+  });
+
+  modal.classList.add('open');
+}
+
+function deleteDispatchRecord(id) {
+  const d = dispatches.find(item => item.id === id);
+  if (!d) return;
+  const ok = confirm(`⚠️【警消最高權限・刪除出勤確認】\n案號：${d.caseNo} (${d.vehicle})\n出勤義消：${d.memberNames.join('、')}\n地點：${d.location}\n\n確定要刪除這筆救護出勤紀錄嗎？`);
+  if (!ok) return;
+
+  dispatches = dispatches.filter(item => item.id !== id);
+  Store.set('dispatches', dispatches);
+  updateAllViews();
+  showToast(`已刪除救護出勤紀錄案號 ${d.caseNo}！`, '🗑️');
+  playFeedbackSound('success');
+}
+
 function setupModals() {
   const modalDispatch = document.getElementById('modalNewDispatch');
   const modalClaim = document.getElementById('modalClaimShift');
 
-  // 開啟出勤 Modal
-  document.getElementById('btnOpenNewDispatchModal')?.addEventListener('click', () => {
+  // 開啟出勤 Modal (重設為新增狀態)
+  function openCreateDispatchModal() {
+    modalDispatch.removeAttribute('data-edit-id');
+    const title = modalDispatch.querySelector('h3');
+    if (title) title.textContent = '🚑 登記救護出勤紀錄';
     document.getElementById('inputCaseNo').value = `1151007-${String(dispatches.length + 1).padStart(2, '0')}`;
     document.getElementById('inputDispatchMember').value = getCurrentMember().name;
     modalDispatch.classList.add('open');
-  });
+  }
 
-  document.getElementById('btnNewDispatchHeader')?.addEventListener('click', () => {
-    document.getElementById('inputCaseNo').value = `1151007-${String(dispatches.length + 1).padStart(2, '0')}`;
-    document.getElementById('inputDispatchMember').value = getCurrentMember().name;
-    modalDispatch.classList.add('open');
-  });
+  document.getElementById('btnOpenNewDispatchModal')?.addEventListener('click', openCreateDispatchModal);
+  document.getElementById('btnNewDispatchHeader')?.addEventListener('click', openCreateDispatchModal);
 
   // 更新排班 Modal 內的個人額度即時提示
   function updateModalQuotaPreview(targetMem) {
     const quotaNotice = document.getElementById('modalQuotaNotice');
     if (!quotaNotice) return;
+
+    if (isSuperAdmin()) {
+      quotaNotice.style.background = 'rgba(245,158,11,0.2)';
+      quotaNotice.style.borderColor = '#f59e0b';
+      quotaNotice.style.color = '#fbbf24';
+      quotaNotice.innerHTML = `👑 <strong>警消承辦人最高管理特權</strong>：不受 3 班上限與處分限制，可任意指定排班或調度`;
+      return;
+    }
+
     const futureShifts = getMemberFutureShifts(targetMem.name);
     const count = futureShifts.length;
     const isRestricted = !!targetMem.isRestricted;
@@ -1911,7 +2217,6 @@ function setupModals() {
     if (val.includes('補定訓')) {
       if (alertMakeup) alertMakeup.style.display = 'block';
       if (selectType) selectType.value = '補定訓';
-      // 確保時段為 4 小時
       if (selectPeriod && selectPeriod.value === '18:00-23:00') {
         selectPeriod.value = '18:00-22:00';
       }
@@ -1921,31 +2226,57 @@ function setupModals() {
     }
   });
 
+  // 監聽警消指派隊員選單變更
+  document.getElementById('selectShiftMemberAdmin')?.addEventListener('change', (e) => {
+    const m = members.find(item => item.name === e.target.value) || getCurrentMember();
+    updateModalQuotaPreview(m);
+  });
+
   // 開啟認領 Modal (附帶資格預檢)
   function openClaimModalWithCheck(isProxy = false, proxyMemberName = null) {
     const cur = getCurrentMember();
     const isOfficer = isCurrentOfficer();
+    const isAdm = isSuperAdmin();
     let targetMem = cur;
 
-    if (isProxy && proxyMemberName) {
-      targetMem = members.find(m => m.name === proxyMemberName) || cur;
+    const grpNormal = document.getElementById('groupShiftMemberNormal');
+    const grpAdmin = document.getElementById('groupShiftMemberAdmin');
+    const selectAdmin = document.getElementById('selectShiftMemberAdmin');
+
+    if (isAdm) {
+      if (grpNormal) grpNormal.style.display = 'none';
+      if (grpAdmin) grpAdmin.style.display = 'block';
+      if (selectAdmin) {
+        if (proxyMemberName) {
+          selectAdmin.value = proxyMemberName;
+        } else if (!selectAdmin.value) {
+          selectAdmin.value = cur.name;
+        }
+        targetMem = members.find(m => m.name === selectAdmin.value) || cur;
+      }
       modalClaim.setAttribute('data-officer-proxy', 'true');
     } else {
-      modalClaim.removeAttribute('data-officer-proxy');
-      // 非幹部代填時，檢查本人是否受管制
-      if (cur.isRestricted && !isOfficer) {
-        alert(
-          `⛔【處分管制中・禁止自行填班】\n隊員：${cur.name}\n管制期限：至 ${cur.restrictionUntil || '115-12-07'} 止（自處分日起2個月）\n\n處分原因：超過三班且屬故意累犯，依規定「無法自行填班，需透過小隊幹部填寫班表」！\n\n⚠️ 重大警告：管制期內如自行填班，將提請幹部會議依《義勇消防組織編組訓練演習服勤辦法》第八條第一項第7款予以解聘！`
-        );
-        return;
-      }
-      // 檢查本人額度是否已滿
-      const futureShifts = getMemberFutureShifts(cur.name);
-      if (futureShifts.length >= 3 && !isOfficer) {
-        alert(
-          `⚠️【預約額度已達上限】\n每位同仁每次預約上限最多 3 班（含跨月）！\n您目前已有 3 班未協勤班次，需待協勤完畢一班後，方可再往後填寫！`
-        );
-        return;
+      if (grpNormal) grpNormal.style.display = 'block';
+      if (grpAdmin) grpAdmin.style.display = 'none';
+
+      if (isProxy && proxyMemberName) {
+        targetMem = members.find(m => m.name === proxyMemberName) || cur;
+        modalClaim.setAttribute('data-officer-proxy', 'true');
+      } else {
+        modalClaim.removeAttribute('data-officer-proxy');
+        if (cur.isRestricted && !isOfficer) {
+          alert(
+            `⛔【處分管制中・禁止自行填班】\n隊員：${cur.name}\n管制期限：至 ${cur.restrictionUntil || '115-12-07'} 止（自處分日起2個月）\n\n處分原因：超過三班且屬故意累犯，依規定「無法自行填班，需透過小隊幹部填寫班表」！\n\n⚠️ 重大警告：管制期內如自行填班，將提請幹部會議依《義勇消防組織編組訓練演習服勤辦法》第八條第一項第7款予以解聘！`
+          );
+          return;
+        }
+        const futureShifts = getMemberFutureShifts(cur.name);
+        if (futureShifts.length >= 3 && !isOfficer) {
+          alert(
+            `⚠️【預約額度已達上限】\n每位同仁每次預約上限最多 3 班（含跨月）！\n您目前已有 3 班未協勤班次，需待協勤完畢一班後，方可再往後填寫！`
+          );
+          return;
+        }
       }
     }
 
@@ -1973,7 +2304,7 @@ function setupModals() {
     });
   });
 
-  // 表單 1: 新增出勤案件
+  // 表單 1: 登記或修改出勤案件
   document.getElementById('formNewDispatch')?.addEventListener('submit', (e) => {
     e.preventDefault();
     const caseNo = document.getElementById('inputCaseNo').value;
@@ -1993,6 +2324,40 @@ function setupModals() {
 
     const isRosc = resultType.includes('ROSC');
     const isIdle = resultType.includes('空跑');
+
+    const editId = modalDispatch.getAttribute('data-edit-id');
+    if (editId) {
+      // 警消編輯修改既有出勤紀錄
+      const idx = dispatches.findIndex(d => d.id === editId);
+      if (idx !== -1) {
+        dispatches[idx] = {
+          ...dispatches[idx],
+          caseNo,
+          vehicle,
+          departureTime,
+          returnTime,
+          location,
+          memberNames: [memberName],
+          resultType,
+          patientCount: isIdle ? 0 : 1,
+          isIdle,
+          treatments,
+          chiefComplaint,
+          hospital: isIdle ? '無' : hospital,
+          isSpecial: isRosc || treatments.includes('12導程心電圖'),
+          specialTag: isRosc ? '🌟 ROSC 急救成功' : (treatments.includes('12導程心電圖') ? '📈 12-Lead ECG 傳輸' : '')
+        };
+      }
+      modalDispatch.removeAttribute('data-edit-id');
+      const title = modalDispatch.querySelector('h3');
+      if (title) title.textContent = '🚑 登記救護出勤紀錄';
+      Store.set('dispatches', dispatches);
+      modalDispatch.classList.remove('open');
+      updateAllViews();
+      playFeedbackSound('success');
+      showToast(`救護出勤案號 ${caseNo} 資料已成功更新！`, '💾');
+      return;
+    }
 
     const newDisp = {
       id: `disp-${Date.now()}`,
@@ -2033,15 +2398,22 @@ function setupModals() {
     showToast(`救護出勤案號 ${caseNo} 登記完成！榮譽履歷已連動`, '🚑');
   });
 
-  // 表單 2: 自排班登記 (嚴格套用所有排班法規驗證)
+  // 表單 2: 自排班登記 (嚴格套用所有排班法規驗證，警消可指定任何隊員)
   document.getElementById('formClaimShift')?.addEventListener('submit', (e) => {
     e.preventDefault();
     const date = document.getElementById('inputShiftDate').value;
     const catVal = document.getElementById('inputShiftCategory').value;
     const period = document.getElementById('inputShiftPeriod').value;
     const shiftType = document.getElementById('inputShiftType').value;
-    const memberName = document.getElementById('inputShiftMemberName').value;
-    const isProxy = modalClaim.getAttribute('data-officer-proxy') === 'true';
+    
+    let memberName = document.getElementById('inputShiftMemberName').value;
+    if (isSuperAdmin()) {
+      const selectAdmin = document.getElementById('selectShiftMemberAdmin');
+      if (selectAdmin && selectAdmin.value) {
+        memberName = selectAdmin.value;
+      }
+    }
+    const isProxy = modalClaim.getAttribute('data-officer-proxy') === 'true' || isSuperAdmin();
 
     // 依據類別映射車輛與值班台標籤
     let vehicle = '救護協勤';
@@ -2082,6 +2454,107 @@ function setupModals() {
     updateAllViews();
     playFeedbackSound('success');
     showToast(`排班成功！${targetMember.name} 於 ${date} (${vehicle} ${period}) 已登記完成`, '🎉');
+  });
+
+  // 警消最高權限 - 補建協勤打卡按鈕
+  document.getElementById('btnAdminAddAttendance')?.addEventListener('click', () => {
+    openAdminEditAttendanceModal(null);
+  });
+
+  // 警消最高權限 - 自動試算在隊時數
+  document.getElementById('btnAdminAttCalcHours')?.addEventListener('click', () => {
+    const sIn = document.getElementById('adminAttSignIn').value;
+    const sOut = document.getElementById('adminAttSignOut').value;
+    if (!sIn || !sOut) return;
+    const [h1, m1] = sIn.split(':').map(Number);
+    const [h2, m2] = sOut.split(':').map(Number);
+    let diff = (h2 * 60 + m2) - (h1 * 60 + m1);
+    if (diff < 0) diff += 24 * 60;
+    const calc = Math.max(0, Math.round((diff / 60) * 10) / 10);
+    document.getElementById('adminAttHours').value = calc;
+    showToast(`自動試算時數：${calc} 小時`, '⏱️');
+  });
+
+  // 警消最高權限 - 儲存協勤簽到退紀錄 (新增或修改)
+  document.getElementById('formAdminEditAttendance')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const id = document.getElementById('adminAttRecordId').value;
+    const memberId = document.getElementById('adminAttMemberSelect').value;
+    const mem = members.find(m => m.id === memberId) || members[0];
+    const date = document.getElementById('adminAttDate').value.trim();
+    const signIn = document.getElementById('adminAttSignIn').value;
+    const signOut = document.getElementById('adminAttSignOut').value;
+    const hours = parseFloat(document.getElementById('adminAttHours').value) || 0;
+    const dispatchesCount = parseInt(document.getElementById('adminAttDispatches').value, 10) || 0;
+    const patientsCount = parseInt(document.getElementById('adminAttPatients').value, 10) || 0;
+    const note = document.getElementById('adminAttNote').value.trim();
+
+    if (id) {
+      const idx = attendance.findIndex(a => a.id === id);
+      if (idx !== -1) {
+        attendance[idx] = {
+          ...attendance[idx],
+          memberId: mem.id,
+          memberName: mem.name,
+          date,
+          signIn,
+          signOut,
+          hours,
+          dispatches: dispatchesCount,
+          patients: patientsCount,
+          note: note || '救護協勤'
+        };
+      }
+      showToast(`已成功覆寫更新【${mem.name}】於 ${date} 的協勤簽到退紀錄！`, '💾');
+    } else {
+      const newAtt = {
+        id: `att-${Date.now()}`,
+        memberId: mem.id,
+        memberName: mem.name,
+        date,
+        signIn,
+        signOut,
+        hours,
+        dispatches: dispatchesCount,
+        patients: patientsCount,
+        note: note || '警消手動補建協勤'
+      };
+      attendance.unshift(newAtt);
+      showToast(`已成功手動補建【${mem.name}】於 ${date} 的協勤出入紀錄！`, '➕');
+    }
+
+    Store.set('attendance', attendance);
+    document.getElementById('modalAdminEditAttendance')?.classList.remove('open');
+    updateAllViews();
+    playFeedbackSound('success');
+  });
+
+  // 警消最高權限 - 儲存隊員檔案與成效數據
+  document.getElementById('formAdminEditMember')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const id = document.getElementById('adminMemberId').value;
+    const mem = members.find(m => m.id === id);
+    if (!mem) return;
+
+    mem.name = document.getElementById('adminMemberName').value.trim();
+    mem.idNo = document.getElementById('adminMemberIdNo').value.trim();
+    mem.level = document.getElementById('adminMemberLevel').value;
+    mem.role = document.getElementById('adminMemberRole').value;
+    mem.phone = document.getElementById('adminMemberPhone').value.trim();
+    mem.totalHours = parseFloat(document.getElementById('adminMemberTotalHours').value) || 0;
+    mem.totalDispatches = parseInt(document.getElementById('adminMemberTotalDispatches').value, 10) || 0;
+    mem.roscCount = parseInt(document.getElementById('adminMemberRoscCount').value, 10) || 0;
+    mem.ecgCount = parseInt(document.getElementById('adminMemberEcgCount').value, 10) || 0;
+    mem.isRestricted = document.getElementById('adminMemberRestricted').value === 'true';
+    mem.restrictionUntil = mem.isRestricted ? (document.getElementById('adminMemberRestrictionUntil').value.trim() || '115-12-07') : null;
+    mem.makeupTrainingStatus = document.getElementById('adminMemberMakeupStatus').value;
+
+    Store.set('members', members);
+    initMemberSelector();
+    document.getElementById('modalAdminEditMember')?.classList.remove('open');
+    updateAllViews();
+    showToast(`已成功覆寫更新隊員【${mem.name}】檔案資料與管制狀態！`, '👮‍♂️');
+    playFeedbackSound('success');
   });
 
   // Modal 4: Supabase 雲端資料庫設定

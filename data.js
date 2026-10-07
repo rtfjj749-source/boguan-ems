@@ -2,6 +2,7 @@
 // 根據真實排班表與官方出勤紀錄表製作
 
 export const INITIAL_MEMBERS = [
+  { id: 'm0', name: '分隊警消承辦人', idNo: 'B120000001', role: '分隊警消承辦人', level: '分隊承辦人 (最高全域管理權限)', avatar: '👮‍♂️', phone: '04-23210119', joined: '博館分隊', totalHours: 999.0, totalDispatches: 999, roscCount: 99, ecgCount: 99, ivCount: 99, isRestricted: false, restrictionUntil: null, makeupTrainingStatus: 'eligible' },
   { id: 'm1', name: '謝易庭', idNo: 'L123668055', role: '救護義消隊員', level: 'EMT-2', avatar: '👨‍🚒', phone: '0912-345678', joined: '111年3月', totalHours: 326.5, totalDispatches: 142, roscCount: 3, ecgCount: 22, ivCount: 31, isRestricted: false, restrictionUntil: null, makeupTrainingStatus: 'eligible' },
   { id: 'm2', name: '林振傑', idNo: 'L124436637', role: '救護義消小隊長', level: 'EMT-P (TP)', avatar: '👨‍⚕️', phone: '0922-888999', joined: '108年6月', totalHours: 580.0, totalDispatches: 268, roscCount: 7, ecgCount: 45, ivCount: 68, isRestricted: false, restrictionUntil: null, makeupTrainingStatus: 'eligible' },
   { id: 'm3', name: '張宥安', idNo: 'L126104316', role: '救護義消幹部', level: 'EMT-2', avatar: '👨‍🚒', phone: '0933-111222', joined: '112年1月', totalHours: 245.0, totalDispatches: 98, roscCount: 2, ecgCount: 16, ivCount: 19, isRestricted: false, restrictionUntil: null, makeupTrainingStatus: 'eligible' },

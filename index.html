@@ -84,6 +84,24 @@
   <!-- 主內容容器 (支援手機與電腦版型) -->
   <main id="mainContainer" class="main-wrapper">
 
+    <!-- 警消承辦人最高管理模式提示橫幅 (由 JS 依權限動態顯示) -->
+    <div id="adminModeBanner" class="super-admin-banner" style="display: none;">
+      <div style="display: flex; align-items: center; gap: 0.65rem;">
+        <span style="font-size: 1.4rem;">👮‍♂️</span>
+        <div>
+          <div><strong>分隊警消承辦人 - 最高全域管理模式已啟動</strong></div>
+          <div style="font-size: 0.78rem; opacity: 0.9; margin-top: 2px;">
+            您具備全域機密資訊檢視、排班限制豁免、協勤簽到退數據任意編修、隊員檔案調整之最高行政權限。
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 0.5rem; align-items: center;">
+        <span style="background: rgba(0,0,0,0.25); padding: 4px 10px; border-radius: 99px; font-size: 0.75rem; border: 1px solid rgba(255,255,255,0.2);">
+          👑 最高全域權限
+        </span>
+      </div>
+    </div>
+
     <!-- ==================== TAB 1: 協勤打卡專區 ==================== -->
     <section id="tab-checkin" class="tab-content active">
       <div class="grid-2">
@@ -186,9 +204,14 @@
 
       <!-- 隊上夥伴動態 & 近期在隊簽到記錄 -->
       <div class="glass-card" style="margin-top: 1.25rem;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
           <h3 style="font-size: 1.05rem; font-weight: 700;">👥 今日在隊與最近簽到動態</h3>
-          <span style="font-size: 0.75rem; color: var(--text-muted);">免紙本・即時連動</span>
+          <div style="display: flex; align-items: center; gap: 0.6rem;">
+            <button id="btnAdminAddAttendance" class="btn-primary" style="display: none; font-size: 0.78rem; padding: 0.35rem 0.75rem; background: linear-gradient(135deg, #f59e0b, #d97706); border: none;">
+              <span>➕ 警消手動補建協勤紀錄</span>
+            </button>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">免紙本・即時連動</span>
+          </div>
         </div>
         <div class="schedule-table-wrap">
           <table class="styled-table">
@@ -202,6 +225,7 @@
                 <th>出勤趟數</th>
                 <th>備註時段</th>
                 <th>狀態</th>
+                <th id="thAdminAttAction" style="display: none;">管理操作</th>
               </tr>
             </thead>
             <tbody id="recentAttendanceTbody"></tbody>
@@ -912,9 +936,13 @@
 
       <form id="formClaimShift">
         <div class="grid-2">
-          <div class="form-group">
+          <div class="form-group" id="groupShiftMemberNormal">
             <label>登記同仁</label>
             <input type="text" id="inputShiftMemberName" class="form-input" readonly>
+          </div>
+          <div class="form-group" id="groupShiftMemberAdmin" style="display: none;">
+            <label>指派登記同仁 <span style="color: #fbbf24;">(👮‍♂️ 警消承辦人特權：可指派全體)</span></label>
+            <select id="selectShiftMemberAdmin" class="form-select"></select>
           </div>
           <div class="form-group">
             <label>個人預約額度檢查</label>
@@ -1235,10 +1263,187 @@
     </div>
   </div>
 
+  <!-- ==================== MODAL 8: 警消專用 - 編輯/補建協勤簽到退紀錄 ==================== -->
+  <div id="modalAdminEditAttendance" class="modal-overlay">
+    <div class="modal-box" style="max-width: 580px;">
+      <div class="modal-title-row">
+        <div>
+          <h3 style="font-size: 1.25rem; font-weight: 700;" id="adminAttModalTitle">👮‍♂️ 警消承辦人 - 編輯協勤簽到退紀錄</h3>
+          <p style="font-size: 0.8rem; color: var(--text-muted);">最高管理權限：可任意調整協勤同仁之日期、真實到退時間與時數數據</p>
+        </div>
+        <button class="btn-close-modal" data-close-modal="modalAdminEditAttendance">&times;</button>
+      </div>
+
+      <form id="formAdminEditAttendance">
+        <input type="hidden" id="adminAttRecordId" value="">
+
+        <div class="grid-2">
+          <div class="form-group">
+            <label>協勤同仁 <span style="color: #ef4444;">*</span></label>
+            <select id="adminAttMemberSelect" class="form-select" required></select>
+          </div>
+          <div class="form-group">
+            <label>協勤日期 (民國年) <span style="color: #ef4444;">*</span></label>
+            <input type="text" id="adminAttDate" class="form-input" required placeholder="例如: 115-10-07">
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="form-group">
+            <label>到隊時間 <span style="color: #ef4444;">*</span></label>
+            <input type="time" id="adminAttSignIn" class="form-input" required value="18:00">
+          </div>
+          <div class="form-group">
+            <label>離隊時間 <span style="color: #ef4444;">*</span></label>
+            <input type="time" id="adminAttSignOut" class="form-input" required value="23:00">
+          </div>
+        </div>
+
+        <div class="grid-3">
+          <div class="form-group">
+            <label>協勤時數 (小時)</label>
+            <div style="display: flex; gap: 4px;">
+              <input type="number" step="0.5" min="0" max="24" id="adminAttHours" class="form-input" required value="5.0">
+              <button type="button" id="btnAdminAttCalcHours" class="btn-secondary" style="padding: 0 8px; font-size: 0.72rem; white-space: nowrap;" title="自動根據時間計算">試算</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>救護趟數</label>
+            <input type="number" min="0" id="adminAttDispatches" class="form-input" required value="2">
+          </div>
+          <div class="form-group">
+            <label>處置病患人次</label>
+            <input type="number" min="0" id="adminAttPatients" class="form-input" required value="2">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>備註事項 / 協勤性質說明</label>
+          <input type="text" id="adminAttNote" class="form-input" placeholder="例如: 自排班救護協勤 (隊上待命)">
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem;">
+          <button type="button" id="btnAdminAttDeleteCurrent" class="btn-secondary" style="color: #f87171; border-color: rgba(239,68,68,0.4); display: none;">
+            🗑️ 刪除此筆紀錄
+          </button>
+          <div style="display: flex; gap: 0.75rem; margin-left: auto;">
+            <button type="button" class="btn-secondary" data-close-modal="modalAdminEditAttendance">取消</button>
+            <button type="submit" class="btn-primary" style="background: linear-gradient(135deg, #f59e0b, #d97706); border: none;">
+              💾 儲存並更新數據
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL 9: 警消專用 - 編輯隊員檔案與成效數據 ==================== -->
+  <div id="modalAdminEditMember" class="modal-overlay">
+    <div class="modal-box" style="max-width: 600px;">
+      <div class="modal-title-row">
+        <div>
+          <h3 style="font-size: 1.25rem; font-weight: 700;">👮‍♂️ 警消承辦人 - 編輯隊員檔案與戰績指標</h3>
+          <p style="font-size: 0.8rem; color: var(--text-muted);">最高管理權限：可修改個人身分資料、調整管制處分狀態與成效數據</p>
+        </div>
+        <button class="btn-close-modal" data-close-modal="modalAdminEditMember">&times;</button>
+      </div>
+
+      <form id="formAdminEditMember">
+        <input type="hidden" id="adminMemberId" value="">
+
+        <div class="grid-2">
+          <div class="form-group">
+            <label>隊員姓名 <span style="color: #ef4444;">*</span></label>
+            <input type="text" id="adminMemberName" class="form-input" required>
+          </div>
+          <div class="form-group">
+            <label>身分證字號 <span style="color: #ef4444;">*</span></label>
+            <input type="text" id="adminMemberIdNo" class="form-input" required>
+          </div>
+        </div>
+
+        <div class="grid-3">
+          <div class="form-group">
+            <label>證照等級</label>
+            <select id="adminMemberLevel" class="form-select">
+              <option value="EMT-1">EMT-1</option>
+              <option value="EMT-2">EMT-2</option>
+              <option value="EMT-P (TP)">EMT-P (TP)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>職稱角色</label>
+            <select id="adminMemberRole" class="form-select">
+              <option value="救護義消隊員">救護義消隊員</option>
+              <option value="救護義消幹部">救護義消幹部</option>
+              <option value="救護義消小隊長">救護義消小隊長</option>
+              <option value="分隊警消承辦人">分隊警消承辦人</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>聯絡電話</label>
+            <input type="text" id="adminMemberPhone" class="form-input" placeholder="09xx-xxxxxx">
+          </div>
+        </div>
+
+        <div class="grid-4" style="background: rgba(30, 41, 59, 0.4); padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border-subtle); margin-bottom: 1rem;">
+          <div class="form-group" style="margin-bottom: 0;">
+            <label style="font-size: 0.75rem;">總協勤時數</label>
+            <input type="number" step="0.5" id="adminMemberTotalHours" class="form-input" required>
+          </div>
+          <div class="form-group" style="margin-bottom: 0;">
+            <label style="font-size: 0.75rem;">總出勤趟數</label>
+            <input type="number" id="adminMemberTotalDispatches" class="form-input" required>
+          </div>
+          <div class="form-group" style="margin-bottom: 0;">
+            <label style="font-size: 0.75rem;">ROSC 急救件數</label>
+            <input type="number" id="adminMemberRoscCount" class="form-input" required>
+          </div>
+          <div class="form-group" style="margin-bottom: 0;">
+            <label style="font-size: 0.75rem;">12-Lead ECG</label>
+            <input type="number" id="adminMemberEcgCount" class="form-input" required>
+          </div>
+        </div>
+
+        <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 8px; padding: 0.85rem; margin-bottom: 1.25rem;">
+          <h4 style="font-size: 0.85rem; color: #f87171; font-weight: 700; margin-bottom: 0.5rem;">⚖️ 處分管制與排班權限設置</h4>
+          <div class="grid-2">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label>處分管制狀態</label>
+              <select id="adminMemberRestricted" class="form-select">
+                <option value="false">✅ 正常無處分</option>
+                <option value="true">⛔ 處分管制中 (鎖定自行填班)</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label>管制截止日期</label>
+              <input type="text" id="adminMemberRestrictionUntil" class="form-input" placeholder="例如: 115-12-07">
+            </div>
+          </div>
+          <div class="form-group" style="margin-top: 0.75rem; margin-bottom: 0;">
+            <label>補定訓值班狀態</label>
+            <select id="adminMemberMakeupStatus" class="form-select">
+              <option value="eligible">✅ 符合資格 (可登記補定訓4hr)</option>
+              <option value="completed">🎉 已完成補定訓</option>
+              <option value="cancelled_absent">⛔ 缺席定訓 (曾臨時取消，不可再補值班)</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
+          <button type="button" class="btn-secondary" data-close-modal="modalAdminEditMember">取消</button>
+          <button type="submit" class="btn-primary" style="background: linear-gradient(135deg, #f59e0b, #d97706); border: none;">
+            💾 儲存並更新隊員檔案
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Toast 通知容器 -->
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- 主邏輯 JS -->
-  <script type="module" src="app.js?v=20261007_v5"></script>
+  <script type="module" src="app.js?v=20261007_v6"></script>
 </body>
 </html>
