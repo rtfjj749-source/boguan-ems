@@ -989,9 +989,11 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  pointer-events: none;
 }
 
 .toast {
+  pointer-events: auto;
   background: #1e293b;
   border-left: 4px solid var(--primary-cyan);
   color: #fff;

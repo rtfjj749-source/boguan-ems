@@ -1,4 +1,4 @@
-import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS } from './data.js';
+import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS } from './data.js?v=20261007_v4';
 
 // ==========================================
 // 1. 資料持久化管理 (LocalStorage)
@@ -2171,14 +2171,19 @@ function setupTabs() {
     });
   });
 
-  // 支援網址直接帶入 Hash (例如: #tab-officer-dashboard) 直接開啟長官列管圖
-  const initHash = window.location.hash.replace('#', '');
-  if (initHash) {
-    const targetBtn = document.querySelector(`.tab-btn[data-tab="${initHash}"]`);
-    if (targetBtn) {
-      setTimeout(() => targetBtn.click(), 50);
+  // 支援網址直接帶入 Hash (例如: #tab-schedule 或 #tab-badges) 直接開啟對應分頁
+  function switchTabByHash() {
+    const rawHash = window.location.hash.replace('#', '').trim();
+    if (rawHash) {
+      const targetBtn = document.querySelector(`.tab-btn[data-tab="${rawHash}"]`);
+      if (targetBtn && !targetBtn.classList.contains('active')) {
+        targetBtn.click();
+      }
     }
   }
+
+  switchTabByHash();
+  window.addEventListener('hashchange', switchTabByHash);
 
   // 篩選輸入事件
   document.getElementById('searchDispatchInput')?.addEventListener('input', renderDispatchList);
