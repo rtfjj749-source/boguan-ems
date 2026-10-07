@@ -1,4 +1,4 @@
-import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS } from './data.js?v=20261007_v4';
+import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS } from './data.js?v=20261007_v5';
 
 // ==========================================
 // 1. 資料持久化管理 (LocalStorage)
@@ -239,6 +239,8 @@ function updateDutyHero() {
   const statusText = document.getElementById('dutyStatusText');
   const btnIn = document.getElementById('btnPunchIn');
   const btnOut = document.getElementById('btnPunchOut');
+  const boxIn = document.getElementById('boxBackfillInTrigger');
+  const boxOut = document.getElementById('boxAdjustOutTrigger');
   
   // 檢查當前隊員是否在隊協勤中
   const isOnDuty = activeDuty && activeDuty.memberId === cur.id;
@@ -248,11 +250,19 @@ function updateDutyHero() {
     statusText.textContent = `協勤值勤中 (博館駐地)`;
     btnIn.disabled = true;
     btnOut.disabled = false;
+    btnIn.classList.add('disabled');
+    btnOut.classList.remove('disabled');
+    if (boxIn) boxIn.style.display = 'none';
+    if (boxOut) boxOut.style.display = 'block';
   } else {
     statusPill.className = 'status-pill offline';
     statusText.textContent = `尚未簽到 (離隊)`;
     btnIn.disabled = false;
     btnOut.disabled = true;
+    btnIn.classList.remove('disabled');
+    btnOut.classList.add('disabled');
+    if (boxIn) boxIn.style.display = 'block';
+    if (boxOut) boxOut.style.display = 'none';
     document.getElementById('dutyTimerDisplay').textContent = '00:00:00';
   }
 }
@@ -278,7 +288,26 @@ function updatePersonalSummary() {
 // 隊上近期簽到列表
 function renderRecentAttendance() {
   const tbody = document.getElementById('recentAttendanceTbody');
+  if (!tbody) return;
   tbody.innerHTML = '';
+
+  // 若當前有隊員在隊協勤中，置頂展示綠燈動態
+  if (activeDuty) {
+    const activeTr = document.createElement('tr');
+    activeTr.style.background = 'rgba(16, 185, 129, 0.12)';
+    activeTr.style.borderLeft = '4px solid #10b981';
+    activeTr.innerHTML = `
+      <td><strong>${activeDuty.dateStr}</strong></td>
+      <td><span style="color: #38bdf8; font-weight: 700;">${activeDuty.memberName}</span></td>
+      <td><span style="color: #34d399; font-weight: 700;">📍 ${activeDuty.timeStr}</span></td>
+      <td><span style="color: #10b981; font-weight: 700;">🟢 在隊待命中...</span></td>
+      <td><span id="liveDutyHoursCell" style="font-weight: 700; color: #fbbf24;">計算中...</span></td>
+      <td>—</td>
+      <td style="color: var(--text-muted); font-size: 0.8rem;">${activeDuty.isBackfilled ? `補登到隊 (${activeDuty.backfillReason})` : '現場手機簽到'}</td>
+      <td><span style="background: rgba(16,185,129,0.25); color: #34d399; font-size: 0.75rem; padding: 2px 8px; border-radius: 99px; font-weight: 700;">值勤中</span></td>
+    `;
+    tbody.appendChild(activeTr);
+  }
 
   const list = [...attendance].slice(-8).reverse();
   list.forEach(att => {
@@ -1509,69 +1538,320 @@ function startClock() {
     // 如果當前隊員處於打卡狀態，計算時數
     const cur = getCurrentMember();
     if (activeDuty && activeDuty.memberId === cur.id) {
-      const elapsedMs = Date.now() - activeDuty.startTime;
+      const elapsedMs = Math.max(0, Date.now() - activeDuty.startTime);
       const totalSec = Math.floor(elapsedMs / 1000);
       const hrs = String(Math.floor(totalSec / 3600)).padStart(2, '0');
       const mins = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
       const secs = String(totalSec % 60).padStart(2, '0');
-      document.getElementById('dutyTimerDisplay').textContent = `${hrs}:${mins}:${secs}`;
+      const timerEl = document.getElementById('dutyTimerDisplay');
+      if (timerEl) timerEl.textContent = `${hrs}:${mins}:${secs}`;
+
+      const liveCell = document.getElementById('liveDutyHoursCell');
+      if (liveCell) {
+        const hVal = Math.max(0.1, Math.round((elapsedMs / 3600000) * 10) / 10);
+        liveCell.textContent = `${hVal.toFixed(1)} hr`;
+      }
     }
   }, 1000);
+}
+
+// 取得民國年月日格式 (例如: 115-10-07)
+function getCurrentRocDate() {
+  const now = new Date();
+  const rocYear = now.getFullYear() - 1911;
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  return `${rocYear}-${mm}-${dd}`;
+}
+
+// 時間字串轉換為當日累積分鐘 (例如 "09:30" -> 570)
+function timeToMinutes(tStr) {
+  if (!tStr) return 0;
+  const [h, m] = tStr.split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+// 分鐘轉換為 HH:mm 格式
+function minutesToTime(mins) {
+  const h = String(Math.floor(mins / 60)).padStart(2, '0');
+  const m = String(mins % 60).padStart(2, '0');
+  return `${h}:${m}`;
+}
+
+// 核心打卡簽到執行邏輯
+function performPunchIn(actualTimeStr = null, reason = '') {
+  const cur = getCurrentMember();
+  const now = new Date();
+  const dateStr = getCurrentRocDate();
+  const timeStr = actualTimeStr || now.toTimeString().substring(0, 5);
+
+  let startTimeMs = Date.now();
+  if (actualTimeStr) {
+    const [h, m] = actualTimeStr.split(':').map(Number);
+    const d = new Date();
+    d.setHours(h, m, 0, 0);
+    startTimeMs = d.getTime();
+  }
+
+  activeDuty = {
+    memberId: cur.id,
+    memberName: cur.name,
+    startTime: startTimeMs,
+    dateStr: dateStr,
+    timeStr: timeStr,
+    isBackfilled: !!actualTimeStr,
+    backfillReason: reason
+  };
+  Store.set('activeDuty', activeDuty);
+  updateDutyHero();
+  updateAllViews();
+  playFeedbackSound('success');
+  
+  if (actualTimeStr) {
+    showToast(`補登成功！${cur.name} 已校正為 ${timeStr} 到隊協勤（在隊累積已同步起算）`, '📍');
+  } else {
+    showToast(`簽到成功！${cur.name} 已於 ${timeStr} 在博館分隊開始協勤`, '📍');
+  }
+}
+
+// 核心簽退離隊執行邏輯
+function performPunchOut(actualTimeStr = null, reason = '') {
+  if (!activeDuty) return;
+  const cur = getCurrentMember();
+  const now = new Date();
+  const signOutTime = actualTimeStr || now.toTimeString().substring(0, 5);
+
+  const inMin = timeToMinutes(activeDuty.timeStr);
+  const outMin = timeToMinutes(signOutTime);
+  let durationMinutes = outMin - inMin;
+  if (durationMinutes < 0) durationMinutes += 24 * 60; // 跨班/跨夜情況
+
+  const durationHours = Math.max(0.5, Math.round((durationMinutes / 60) * 10) / 10);
+  const isMealEligible = durationHours >= 4.0;
+
+  let note = '即時手機打卡協勤';
+  if (activeDuty.isBackfilled && reason) {
+    note = `補登到隊(${activeDuty.backfillReason})，校正離隊(${reason})`;
+  } else if (activeDuty.isBackfilled) {
+    note = `補登到隊協勤 (${activeDuty.backfillReason})`;
+  } else if (reason) {
+    note = `校正離隊協勤 (${reason})`;
+  }
+
+  const newAtt = {
+    id: `att-${Date.now()}`,
+    memberId: cur.id,
+    memberName: cur.name,
+    date: activeDuty.dateStr,
+    signIn: activeDuty.timeStr,
+    signOut: signOutTime,
+    hours: durationHours,
+    dispatches: 1,
+    patients: 1,
+    note: note
+  };
+
+  attendance.unshift(newAtt);
+  Store.set('attendance', attendance);
+
+  cur.totalHours = (Number(cur.totalHours) || 0) + durationHours;
+  Store.set('members', members);
+
+  activeDuty = null;
+  Store.set('activeDuty', null);
+
+  updateAllViews();
+  playFeedbackSound('success');
+  showToast(`簽退完成！本日協勤 ${durationHours} 小時已存入系統${isMealEligible ? '（符合誤餐費資格）' : ''}`, '🏁');
 }
 
 function setupPunchEvents() {
   const btnIn = document.getElementById('btnPunchIn');
   const btnOut = document.getElementById('btnPunchOut');
 
-  btnIn.addEventListener('click', () => {
-    const cur = getCurrentMember();
-    activeDuty = {
-      memberId: cur.id,
-      memberName: cur.name,
-      startTime: Date.now(),
-      dateStr: '115-10-07',
-      timeStr: new Date().toTimeString().substring(0, 5)
-    };
-    Store.set('activeDuty', activeDuty);
-    updateDutyHero();
-    playFeedbackSound('success');
-    showToast(`簽到成功！${cur.name} 已在博館分隊開始值班協勤`, '📍');
+  // 一鍵到隊簽到 (當前時間)
+  btnIn?.addEventListener('click', () => {
+    performPunchIn();
   });
 
-  btnOut.addEventListener('click', () => {
+  // 一鍵簽退離開 (當前時間)
+  btnOut?.addEventListener('click', () => {
+    performPunchOut();
+  });
+
+  // Modal 5: 補登到隊時間 (限當日 6 小時內)
+  const btnOpenBackfill = document.getElementById('btnOpenBackfillIn');
+  const modalBackfill = document.getElementById('modalBackfillIn');
+  const formBackfill = document.getElementById('formBackfillIn');
+  const inputBackfillTime = document.getElementById('inputBackfillTime');
+
+  btnOpenBackfill?.addEventListener('click', () => {
+    const cur = getCurrentMember();
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const minAllowedMin = Math.max(0, nowMin - 360); // 嚴格限制：最多往回 6 小時
+    const minTimeStr = minutesToTime(minAllowedMin);
+    const maxTimeStr = minutesToTime(nowMin);
+
+    const nameEl = document.getElementById('inputBackfillMemberName');
+    if (nameEl) nameEl.value = cur.name;
+    const dateEl = document.getElementById('inputBackfillDate');
+    if (dateEl) dateEl.value = `${getCurrentRocDate()} (今日)`;
+
+    if (inputBackfillTime) {
+      inputBackfillTime.value = maxTimeStr;
+      inputBackfillTime.min = minTimeStr;
+      inputBackfillTime.max = maxTimeStr;
+    }
+    const hintEl = document.getElementById('backfillTimeLimitHint');
+    if (hintEl) {
+      hintEl.textContent = `※ 依分隊規定限當日 6 小時內：最早可補選 ${minTimeStr}，最晚為當前時間 ${maxTimeStr}`;
+    }
+    modalBackfill?.classList.add('open');
+  });
+
+  formBackfill?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const chosenVal = inputBackfillTime?.value;
+    if (!chosenVal) return;
+
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const minAllowedMin = Math.max(0, nowMin - 360);
+    const chosenMin = timeToMinutes(chosenVal);
+
+    if (chosenMin > nowMin) {
+      alert('【時間無效】到隊時間不可超過當前系統時間！');
+      return;
+    }
+    if (chosenMin < minAllowedMin) {
+      alert(`【超出校正範圍】依分隊規定，補登到隊時間最多僅限往回校正當日 6 小時內（最早可選 ${minutesToTime(minAllowedMin)}）！`);
+      return;
+    }
+
+    const reasonEl = document.querySelector('input[name="backfillReason"]:checked');
+    const reason = reasonEl ? reasonEl.value : '忙碌忘了打卡';
+
+    performPunchIn(chosenVal, reason);
+    modalBackfill?.classList.remove('open');
+  });
+
+  // Modal 6: 校正離隊簽退時間 (限當日 6 小時內)
+  const btnOpenAdjust = document.getElementById('btnOpenAdjustOut');
+  const modalAdjust = document.getElementById('modalAdjustOut');
+  const formAdjust = document.getElementById('formAdjustOut');
+  const inputAdjustOut = document.getElementById('inputAdjustOutTime');
+
+  function updateAdjustOutPreview() {
+    if (!activeDuty || !inputAdjustOut) return;
+    const inMin = timeToMinutes(activeDuty.timeStr);
+    const outMin = timeToMinutes(inputAdjustOut.value);
+    let diff = outMin - inMin;
+    if (diff < 0) diff += 24 * 60;
+    const hrs = Math.max(0.5, Math.round((diff / 60) * 10) / 10);
+    const hrsEl = document.getElementById('previewAdjustHours');
+    if (hrsEl) hrsEl.textContent = `${hrs.toFixed(1)} hr`;
+    const mealEl = document.getElementById('previewAdjustMeal');
+    if (mealEl) {
+      if (hrs >= 4.0) {
+        mealEl.textContent = '✅ 符合誤餐費資格 ($100)';
+        mealEl.style.color = '#34d399';
+      } else {
+        mealEl.textContent = '未達 4 小時 (無誤餐費)';
+        mealEl.style.color = '#f87171';
+      }
+    }
+  }
+
+  btnOpenAdjust?.addEventListener('click', () => {
     if (!activeDuty) return;
-    const cur = getCurrentMember();
-    const durationHours = Math.max(1, Math.round(((Date.now() - activeDuty.startTime) / 3600000) * 10) / 10);
-    const signOutTime = new Date().toTimeString().substring(0, 5);
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const inMin = timeToMinutes(activeDuty.timeStr);
+    const minAllowedMin = Math.max(inMin, nowMin - 360);
+    const minTimeStr = minutesToTime(minAllowedMin);
+    const maxTimeStr = minutesToTime(nowMin);
 
-    // 新增簽到退紀錄
-    const newAtt = {
-      id: `att-${Date.now()}`,
-      memberId: cur.id,
-      memberName: cur.name,
-      date: activeDuty.dateStr,
-      signIn: activeDuty.timeStr,
-      signOut: signOutTime,
-      hours: durationHours,
-      dispatches: 1,
-      patients: 1,
-      note: '即時手機打卡協勤'
-    };
-
-    attendance.push(newAtt);
-    Store.set('attendance', attendance);
-
-    // 更新成員累計時數
-    cur.totalHours = (Number(cur.totalHours) || 0) + durationHours;
-    Store.set('members', members);
-
-    activeDuty = null;
-    Store.set('activeDuty', null);
-
-    updateAllViews();
-    playFeedbackSound('success');
-    showToast(`簽退完成！本日協勤時數 ${durationHours} 小時已存入系統`, '🏁');
+    const signInDisplay = document.getElementById('inputAdjustOutSignInTime');
+    if (signInDisplay) {
+      signInDisplay.value = `${activeDuty.dateStr} 📍 ${activeDuty.timeStr}`;
+    }
+    if (inputAdjustOut) {
+      inputAdjustOut.value = maxTimeStr;
+      inputAdjustOut.min = minTimeStr;
+      inputAdjustOut.max = maxTimeStr;
+    }
+    const hintEl = document.getElementById('adjustOutTimeLimitHint');
+    if (hintEl) {
+      hintEl.textContent = `※ 限簽到時間 ${activeDuty.timeStr} 至當前時間 ${maxTimeStr} 之間（往回最多 6 小時）`;
+    }
+    updateAdjustOutPreview();
+    modalAdjust?.classList.add('open');
   });
+
+  inputAdjustOut?.addEventListener('input', updateAdjustOutPreview);
+
+  formAdjust?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!activeDuty || !inputAdjustOut) return;
+    const chosenVal = inputAdjustOut.value;
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const inMin = timeToMinutes(activeDuty.timeStr);
+    const minAllowedMin = Math.max(inMin, nowMin - 360);
+    const chosenMin = timeToMinutes(chosenVal);
+
+    if (chosenMin < inMin) {
+      alert('【時間無效】離隊時間不可早於到隊簽到時間！');
+      return;
+    }
+    if (chosenMin > nowMin) {
+      alert('【時間無效】離隊時間不可超過當前系統時間！');
+      return;
+    }
+    if (nowMin - chosenMin > 360) {
+      alert(`【超出校正範圍】依分隊規定，離隊時間最多僅限往回校正 6 小時內（最早可選 ${minutesToTime(minAllowedMin)}）！`);
+      return;
+    }
+
+    const reasonEl = document.querySelector('input[name="adjustOutReason"]:checked');
+    const reason = reasonEl ? reasonEl.value : '離開時忘記按簽退';
+
+    performPunchOut(chosenVal, reason);
+    modalAdjust?.classList.remove('open');
+  });
+
+  // Modal 7: 值班台專屬打卡 QR Code
+  const modalQr = document.getElementById('modalStationQr');
+  document.getElementById('btnOpenStationQr')?.addEventListener('click', () => {
+    const cleanUrl = `${window.location.origin}${window.location.pathname}`;
+    const targetUrl = `${cleanUrl}?action=checkin#tab-checkin`;
+    const qrImg = document.getElementById('stationQrImg');
+    if (qrImg) {
+      qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(targetUrl)}`;
+    }
+    modalQr?.classList.add('open');
+  });
+
+  document.getElementById('btnPrintQrPoster')?.addEventListener('click', () => {
+    window.print();
+  });
+
+  document.getElementById('btnCopyCheckinLink')?.addEventListener('click', () => {
+    const cleanUrl = `${window.location.origin}${window.location.pathname}`;
+    const targetUrl = `${cleanUrl}?action=checkin#tab-checkin`;
+    navigator.clipboard.writeText(targetUrl).then(() => {
+      showToast('已複製值班台打卡直連網址！可貼入 LINE 群組', '📋');
+    });
+  });
+
+  // 檢查 URL query 是否為掃碼直連打卡
+  if (window.location.search.includes('action=checkin')) {
+    setTimeout(() => {
+      const cur = getCurrentMember();
+      showToast(`👋 歡迎 ${cur.name} 抵達博館分隊！請點擊按鈕完成出入登記`, '📍');
+    }, 400);
+  }
 }
 
 // ==========================================
