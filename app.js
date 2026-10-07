@@ -844,7 +844,7 @@ function getMemberFutureShifts(memberName) {
 function parseTimePeriod(periodStr) {
   if (!periodStr || typeof periodStr !== 'string') return { startMin: 0, endMin: 0, valid: false, formatted: '' };
   const raw = periodStr.trim().replace(/\s+/g, '');
-  const parts = raw.split(/[~-至到]/);
+  const parts = raw.split(/[-~至到]/);
   if (parts.length !== 2) return { startMin: 0, endMin: 0, valid: false, formatted: '' };
 
   function parsePart(p) {
@@ -859,6 +859,12 @@ function parseTimePeriod(periodStr) {
     if (/^\d{4}$/.test(p)) {
       const h = Number(p.slice(0, 2));
       const m = Number(p.slice(2, 4));
+      return h * 60 + m;
+    }
+    // 3位純數字格式，例如 "930" -> 09:30
+    if (/^\d{3}$/.test(p)) {
+      const h = Number(p.slice(0, 1));
+      const m = Number(p.slice(1, 3));
       return h * 60 + m;
     }
     // 1~2位純數字格式（常見手動簡寫），例如 "9", "09", "15", "22"
@@ -1449,10 +1455,13 @@ function renderOfficerAuditPanel() {
   tbody.querySelectorAll('.btn-officer-proxy-book').forEach(btn => {
     btn.addEventListener('click', () => {
       const name = btn.getAttribute('data-member-name');
+      const targetMem = members.find(m => m.name === name) || { name };
       const modal = document.getElementById('modalClaimShift');
       document.getElementById('inputShiftMemberName').value = name;
+      if (window.updateModalQuotaPreview) window.updateModalQuotaPreview(targetMem);
       modal.setAttribute('data-officer-proxy', 'true');
       modal.classList.add('open');
+      if (typeof updateFlexibleTimeInputs === 'function') updateFlexibleTimeInputs(true);
       showToast(`已進入【幹部代填模式】（代表隊員：${name} 填表）`, '👮');
     });
   });
@@ -1542,7 +1551,9 @@ function openDayDetailModal(day) {
         modal.classList.remove('open');
         const selectDate = document.getElementById('inputShiftDate');
         if (selectDate) selectDate.value = dateKey;
-        document.getElementById('inputShiftMemberName').value = getCurrentMember().name;
+        const curUser = getCurrentMember();
+        document.getElementById('inputShiftMemberName').value = curUser.name;
+        if (window.updateModalQuotaPreview) window.updateModalQuotaPreview(curUser);
         syncFlexiblePeriodInputs(`${startH}:00`, `${endH}:00`);
         document.getElementById('modalClaimShift')?.classList.add('open');
         updateClaimModalSlotMeter();
@@ -1764,8 +1775,11 @@ function openDayDetailModal(day) {
       modal.classList.remove('open');
       const selectDate = document.getElementById('inputShiftDate');
       if (selectDate) selectDate.value = dateKey;
-      document.getElementById('inputShiftMemberName').value = getCurrentMember().name;
+      const curUser = getCurrentMember();
+      document.getElementById('inputShiftMemberName').value = curUser.name;
+      if (window.updateModalQuotaPreview) window.updateModalQuotaPreview(curUser);
       document.getElementById('modalClaimShift')?.classList.add('open');
+      if (typeof updateFlexibleTimeInputs === 'function') updateFlexibleTimeInputs(true);
       updateClaimModalSlotMeter();
     };
   }
@@ -2717,6 +2731,7 @@ function setupModals() {
       quotaNotice.innerHTML = `✅ 目前預約：${count} / 3 班 ｜ 本次尚可預約 ${3 - count} 班`;
     }
   }
+  window.updateModalQuotaPreview = updateModalQuotaPreview;
 
   // 即時計算並更新排班 Modal 內的時段席位儀表 (先填先站位即時回饋)
   function updateClaimModalSlotMeter() {
@@ -2794,6 +2809,9 @@ function setupModals() {
     }
     if (/^\d{4}$/.test(s)) {
       return `${s.slice(0, 2)}:${s.slice(2, 4)}`;
+    }
+    if (/^\d{3}$/.test(s)) {
+      return `0${s.slice(0, 1)}:${s.slice(1, 3)}`;
     }
     if (/^\d{1,2}$/.test(s)) {
       return `${String(Number(s)).padStart(2, '0')}:00`;
