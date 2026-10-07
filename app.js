@@ -610,26 +610,37 @@ let calFilterVacantOnly = false;
 let calCurrentMonth = 10;
 let calCurrentYear = 115;
 
-const WEEKDAYS_MAP = {
-  1:'四', 2:'五', 3:'六', 4:'日', 5:'一', 6:'二', 7:'三',
-  8:'四', 9:'五', 10:'六', 11:'日', 12:'一', 13:'二', 14:'三',
-  15:'四', 16:'五', 17:'六', 18:'日', 19:'一', 20:'二', 21:'三',
-  22:'四', 23:'五', 24:'六', 25:'日', 26:'一', 27:'二', 28:'三',
-  29:'四', 30:'五', 31:'六'
-};
+function getDaysInRocMonth(rocYear, month) {
+  const gregYear = rocYear + 1911;
+  return new Date(gregYear, month, 0).getDate();
+}
+
+function getRocDateWeekday(rocYear, month, day) {
+  const gregYear = rocYear + 1911;
+  const d = new Date(gregYear, month - 1, day);
+  return ['日', '一', '二', '三', '四', '五', '六'][d.getDay()];
+}
 
 function populateShiftDatesDropdown() {
   const select = document.getElementById('inputShiftDate');
   if (!select) return;
   select.innerHTML = '';
-  for (let d = 1; d <= 31; d++) {
+  const daysInMonth = getDaysInRocMonth(calCurrentYear, calCurrentMonth);
+  const monthStr = String(calCurrentMonth).padStart(2, '0');
+
+  const lbl = document.getElementById('labelShiftDateMonth');
+  if (lbl) {
+    lbl.textContent = `協勤日期 (${calCurrentYear}年${calCurrentMonth}月)`;
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
     const dayStr = String(d).padStart(2, '0');
-    const w = WEEKDAYS_MAP[d] || '';
-    const isHoliday = d === 10 ? ' (國慶日 ⭐)' : '';
+    const w = getRocDateWeekday(calCurrentYear, calCurrentMonth, d);
+    const isHoliday = (calCurrentMonth === 10 && d === 10) ? ' (國慶日 ⭐)' : '';
     const opt = document.createElement('option');
-    opt.value = `115-10-${dayStr}`;
-    opt.textContent = `115-10-${dayStr} (${w})${isHoliday}`;
-    if (d === 7) opt.selected = true;
+    opt.value = `${calCurrentYear}-${monthStr}-${dayStr}`;
+    opt.textContent = `${calCurrentYear}-${monthStr}-${dayStr} (${w})${isHoliday}`;
+    if (d === 1) opt.selected = true;
     select.appendChild(opt);
   }
 }
@@ -642,6 +653,16 @@ function renderVisualCalendar() {
   const curUser = getCurrentMember();
   const filterVehicle = document.getElementById('calFilterVehicle')?.value || 'ALL';
   const highlightMe = document.getElementById('calHighlightMe')?.checked ?? true;
+
+  // 更新頂部標題
+  const titleText = document.getElementById('calMonthTitleText');
+  if (titleText) {
+    titleText.textContent = `民國 ${calCurrentYear} 年 ${calCurrentMonth} 月`;
+  }
+  const natTag = document.getElementById('calNationalDayTag');
+  if (natTag) {
+    natTag.style.display = (calCurrentMonth === 10) ? 'inline-block' : 'none';
+  }
 
   // 1. 生成 7 天星期標題
   const weekdays = [
@@ -661,30 +682,39 @@ function renderVisualCalendar() {
     grid.appendChild(header);
   });
 
-  // 2. 115年10月1日為週四 (Sunday=0, Thursday=4, 前面補 4 格上個月空白)
-  for (let p = 0; p < 4; p++) {
+  const gregYear = calCurrentYear + 1911;
+  const firstDayWeekday = new Date(gregYear, calCurrentMonth - 1, 1).getDay(); // 0(Sun) ~ 6(Sat)
+  const prevMonthDays = new Date(gregYear, calCurrentMonth - 1, 0).getDate();
+  const daysInMonth = getDaysInRocMonth(calCurrentYear, calCurrentMonth);
+  const monthStr = String(calCurrentMonth).padStart(2, '0');
+  const monthPrefix = `${calCurrentYear}-${monthStr}-`;
+
+  // 2. 前置上個月填充格
+  for (let p = 0; p < firstDayWeekday; p++) {
+    const padDay = prevMonthDays - firstDayWeekday + 1 + p;
     const padCell = document.createElement('div');
     padCell.className = 'calendar-day-cell other-month';
-    padCell.innerHTML = `<div class="calendar-day-header"><span class="calendar-day-num" style="opacity: 0.3;">${27 + p}</span></div>`;
+    padCell.innerHTML = `<div class="calendar-day-header"><span class="calendar-day-num" style="opacity: 0.3;">${padDay}</span></div>`;
     grid.appendChild(padCell);
   }
 
-  // 3. 生成 1~31 日期儲存格
+  // 3. 生成 1~daysInMonth 日期儲存格
   let statTotal = 0;
   let statEms = 0;
   let statDesk = 0;
   let statVacant = 0;
 
-  for (let d = 1; d <= 31; d++) {
+  for (let d = 1; d <= daysInMonth; d++) {
     const dayStr = String(d).padStart(2, '0');
-    const dateKey = `115-10-${dayStr}`;
-    const dayOfWeek = WEEKDAYS_MAP[d];
-    const isWeekend = dayOfWeek === '六' || dayOfWeek === '日';
-    const isToday = d === 7; // 模擬當前日期為 10/7
-    const isNationalDay = d === 10;
+    const dateKey = `${monthPrefix}${dayStr}`;
+    const dObj = new Date(gregYear, calCurrentMonth - 1, d);
+    const dayOfWeekIdx = dObj.getDay();
+    const isWeekend = dayOfWeekIdx === 0 || dayOfWeekIdx === 6;
+    const isToday = (calCurrentYear === 115 && calCurrentMonth === 10 && d === 7); // 展示基準日
+    const isNationalDay = (calCurrentMonth === 10 && d === 10);
 
     // 取得當天所有班次
-    let dayShifts = shifts.filter(s => s.date === dateKey || s.day === d);
+    let dayShifts = shifts.filter(s => s.date === dateKey || (calCurrentMonth === 10 && s.day === d && !s.date?.includes('-')));
 
     // 統計全月數據 (未過濾前)
     dayShifts.forEach(s => {
@@ -1169,13 +1199,14 @@ function renderOfficerAuditPanel() {
 function openDayDetailModal(day) {
   const modal = document.getElementById('modalDayDetail');
   const dayStr = String(day).padStart(2, '0');
-  const dateKey = `115-10-${dayStr}`;
-  const weekday = WEEKDAYS_MAP[day] || '';
-  const dayShifts = shifts.filter(s => s.date === dateKey || s.day === day);
+  const monthStr = String(calCurrentMonth).padStart(2, '0');
+  const dateKey = `${calCurrentYear}-${monthStr}-${dayStr}`;
+  const weekday = getRocDateWeekday(calCurrentYear, calCurrentMonth, day);
+  const dayShifts = shifts.filter(s => s.date === dateKey || (calCurrentMonth === 10 && s.day === day && !s.date?.includes('-')));
   const curUser = getCurrentMember();
   const isOfficer = isCurrentOfficer();
 
-  document.getElementById('dayDetailTitle').textContent = `📅 115年10月${dayStr}日 (週${weekday}) 排班詳情`;
+  document.getElementById('dayDetailTitle').textContent = `📅 ${calCurrentYear}年${monthStr}月${dayStr}日 (週${weekday}) 排班詳情`;
   document.getElementById('dayDetailSub').textContent = `博館分隊 救護待命與值班台協勤 ｜ 當日共 ${dayShifts.length} 班次`;
 
   const container = document.getElementById('dayDetailShiftsList');
@@ -1299,7 +1330,10 @@ function renderScheduleListView() {
   const curUser = getCurrentMember();
   const isOfficer = isCurrentOfficer();
 
-  let list = shifts;
+  const monthStr = String(calCurrentMonth).padStart(2, '0');
+  const monthPrefix = `${calCurrentYear}-${monthStr}-`;
+
+  let list = shifts.filter(s => s.date?.startsWith(monthPrefix) || (calCurrentMonth === 10 && !s.date?.includes('-')));
   if (filterVehicle !== 'ALL') {
     if (filterVehicle === '救護協勤') {
       list = list.filter(s => !s.vehicle.includes('值班'));
@@ -1311,6 +1345,11 @@ function renderScheduleListView() {
   }
   if (calFilterVacantOnly) {
     list = list.filter(s => !s.memberName || s.status === '缺協勤');
+  }
+
+  if (list.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 2rem;">民國 ${calCurrentYear} 年 ${calCurrentMonth} 月尚無排班紀錄，可隨時點擊「➕ 登記協勤時段」新增！</td></tr>`;
+    return;
   }
 
   list.forEach(s => {
@@ -1447,14 +1486,33 @@ function setupCalendarControls() {
 
   // 月份導覽按鈕
   document.getElementById('btnPrevMonth')?.addEventListener('click', () => {
-    showToast('目前展示示範月份：民國 115 年 10 月', 'ℹ️');
+    calCurrentMonth--;
+    if (calCurrentMonth < 1) {
+      calCurrentMonth = 12;
+      calCurrentYear--;
+    }
+    populateShiftDatesDropdown();
+    renderSchedule();
+    showToast(`已切換至 民國 ${calCurrentYear} 年 ${calCurrentMonth} 月`, '📅');
   });
+
   document.getElementById('btnNextMonth')?.addEventListener('click', () => {
-    showToast('目前展示示範月份：民國 115 年 10 月', 'ℹ️');
+    calCurrentMonth++;
+    if (calCurrentMonth > 12) {
+      calCurrentMonth = 1;
+      calCurrentYear++;
+    }
+    populateShiftDatesDropdown();
+    renderSchedule();
+    showToast(`已切換至 民國 ${calCurrentYear} 年 ${calCurrentMonth} 月`, '📅');
   });
+
   document.getElementById('btnTodayMonth')?.addEventListener('click', () => {
-    showToast('已跳轉回本月 (115年10月)', '📅');
-    renderVisualCalendar();
+    calCurrentYear = 115;
+    calCurrentMonth = 10;
+    populateShiftDatesDropdown();
+    renderSchedule();
+    showToast('已跳轉回本月 (民國 115 年 10 月)', '📅');
   });
 }
 
@@ -2431,12 +2489,18 @@ function setupModals() {
       return;
     }
 
-    const dayNum = Number(date.split('-')[2]) || 7;
+    const dayNum = Number(date.split('-')[2]) || 1;
+    const dateParts = date.split('-');
+    const gregYear = Number(dateParts[0]) + 1911;
+    const mIdx = Number(dateParts[1]) - 1;
+    const dVal = Number(dateParts[2]);
+    const weekdayName = ['日', '一', '二', '三', '四', '五', '六'][new Date(gregYear, mIdx, dVal).getDay()];
+
     const newShift = {
       id: `s-${Date.now()}`,
       date,
       day: dayNum,
-      dayOfWeek: WEEKDAYS_MAP[dayNum] || '登記班',
+      dayOfWeek: weekdayName,
       vehicle,
       period,
       memberName: targetMember.name,
