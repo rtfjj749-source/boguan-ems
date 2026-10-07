@@ -840,36 +840,49 @@ function getMemberFutureShifts(memberName) {
   return shifts.filter(s => s.memberName === memberName && s.date >= CURRENT_SYSTEM_DATE && s.status !== '缺席');
 }
 
+// 全形轉換與時間格式清洗工具（防呆支援全形數字、全形冒號、小數點、各種連接符）
+function cleanFlexibleTimeStr(s) {
+  if (!s) return '';
+  return String(s)
+    .trim()
+    .replace(/\s+/g, '')
+    .replace(/[\uFF10-\uFF19]/g, m => String.fromCharCode(m.charCodeAt(0) - 0xFEE0))
+    .replace(/[：點点]/g, ':')
+    .replace(/[.。]/g, ':')
+    .replace(/[－—–～~至到]/g, '-');
+}
+
 // 智慧彈性時間解析器：支援手動輸入如 "09-15", "9-15", "09:00-15:00", "09:30-15:00", "09~15", "0900-1500" 等
 function parseTimePeriod(periodStr) {
   if (!periodStr || typeof periodStr !== 'string') return { startMin: 0, endMin: 0, valid: false, formatted: '' };
-  const raw = periodStr.trim().replace(/\s+/g, '');
-  const parts = raw.split(/[-~至到]/);
+  const raw = cleanFlexibleTimeStr(periodStr);
+  const parts = raw.split('-');
   if (parts.length !== 2) return { startMin: 0, endMin: 0, valid: false, formatted: '' };
 
   function parsePart(p) {
     if (!p) return null;
+    const s = cleanFlexibleTimeStr(p);
     // 包含冒號格式，例如 "09:30", "9:00"
-    if (p.includes(':')) {
-      const [h, m] = p.split(':').map(Number);
+    if (s.includes(':')) {
+      const [h, m] = s.split(':').map(Number);
       if (isNaN(h)) return null;
       return (h || 0) * 60 + (m || 0);
     }
     // 4位純數字格式，例如 "0930", "1500"
-    if (/^\d{4}$/.test(p)) {
-      const h = Number(p.slice(0, 2));
-      const m = Number(p.slice(2, 4));
+    if (/^\d{4}$/.test(s)) {
+      const h = Number(s.slice(0, 2));
+      const m = Number(s.slice(2, 4));
       return h * 60 + m;
     }
     // 3位純數字格式，例如 "930" -> 09:30
-    if (/^\d{3}$/.test(p)) {
-      const h = Number(p.slice(0, 1));
-      const m = Number(p.slice(1, 3));
+    if (/^\d{3}$/.test(s)) {
+      const h = Number(s.slice(0, 1));
+      const m = Number(s.slice(1, 3));
       return h * 60 + m;
     }
     // 1~2位純數字格式（常見手動簡寫），例如 "9", "09", "15", "22"
-    if (/^\d{1,2}$/.test(p)) {
-      const h = Number(p);
+    if (/^\d{1,2}$/.test(s)) {
+      const h = Number(s);
       return h * 60;
     }
     return null;
@@ -2741,15 +2754,17 @@ function setupModals() {
     const descEl = document.getElementById('modalSlotLiveStatusDesc');
     const badgeEl = document.getElementById('modalSlotLiveStatusBadge');
     const submitBtn = document.getElementById('btnSubmitClaimShift');
-    if (!date || !period || !descEl || !badgeEl) return;
+    if (!date || !period || !badgeEl) return;
 
     const isDesk = catVal && catVal.includes('值班');
     const status = getSlotCapacityStatus(date, period);
 
     if (isDesk) {
       if (status.deskFull) {
-        descEl.textContent = `該時段協勤值班已有同仁站位（${status.deskOccupants.map(s => s.memberName).join('、')}）！依規定一個時段僅限 1 位，請選擇其他時段。`;
-        descEl.style.color = '#f87171';
+        if (descEl) {
+          descEl.textContent = `該時段協勤值班已有同仁站位（${status.deskOccupants.map(s => s.memberName).join('、')}）！依規定一個時段僅限 1 位，請選擇其他時段。`;
+          descEl.style.color = '#f87171';
+        }
         badgeEl.className = 'capacity-pill full';
         badgeEl.textContent = '🔴 值班已額滿 (1/1)';
         if (submitBtn) {
@@ -2757,8 +2772,10 @@ function setupModals() {
           submitBtn.style.opacity = '0.5';
         }
       } else {
-        descEl.textContent = `協勤值班開放站位中（限額 1 位）。採先填先站位原則，送出即可成功卡位！`;
-        descEl.style.color = '#34d399';
+        if (descEl) {
+          descEl.textContent = `協勤值班開放站位中（限額 1 位）。採先填先站位原則，送出即可成功卡位！`;
+          descEl.style.color = '#34d399';
+        }
         badgeEl.className = 'capacity-pill available';
         badgeEl.textContent = '🟢 尚可站位 (0/1)';
         if (submitBtn) {
@@ -2768,8 +2785,10 @@ function setupModals() {
       }
     } else {
       if (status.emsFull) {
-        descEl.textContent = `該時段協勤救護已達 4 位上限（已站位：${status.emsOccupants.map(s => s.memberName).join('、')}）！採先填先站位原則，已無法再登記。`;
-        descEl.style.color = '#f87171';
+        if (descEl) {
+          descEl.textContent = `該時段協勤救護已達 4 位上限（已站位：${status.emsOccupants.map(s => s.memberName).join('、')}）！採先填先站位原則，已無法再登記。`;
+          descEl.style.color = '#f87171';
+        }
         badgeEl.className = 'capacity-pill full';
         badgeEl.textContent = '🔴 救護已額滿 (4/4)';
         if (submitBtn) {
@@ -2777,8 +2796,10 @@ function setupModals() {
           submitBtn.style.opacity = '0.5';
         }
       } else {
-        descEl.textContent = `協勤救護目前 ${status.emsOccupants.length}/4 位站位（尚餘 ${status.emsAvailable} 席開放）。採先填先站位原則，送出即可立即卡位！`;
-        descEl.style.color = '#38bdf8';
+        if (descEl) {
+          descEl.textContent = `協勤救護目前 ${status.emsOccupants.length}/4 位站位（尚餘 ${status.emsAvailable} 席開放）。採先填先站位原則，送出即可立即卡位！`;
+          descEl.style.color = '#38bdf8';
+        }
         badgeEl.className = 'capacity-pill available';
         badgeEl.textContent = `🟢 尚餘 ${status.emsAvailable} 席 (可站位)`;
         if (submitBtn) {
@@ -2800,7 +2821,7 @@ function setupModals() {
 
   function normalizeTimeStr(tStr) {
     if (!tStr) return '';
-    const s = String(tStr).trim().replace(/\s+/g, '');
+    const s = cleanFlexibleTimeStr(tStr);
     if (s.includes(':')) {
       const [h, m] = s.split(':').map(Number);
       if (!isNaN(h)) {
