@@ -378,11 +378,10 @@
             </button>
           </div>
 
-          <!-- 車輛/性質篩選 -->
+          <!-- 勤務性質篩選 -->
           <select id="calFilterVehicle" class="form-select" style="width: auto; padding: 0.4rem 0.75rem; font-size: 0.82rem;">
-            <option value="ALL">全部勤務 (救護班+值班台)</option>
-            <option value="博館91">🚒 博館 91 (救護班)</option>
-            <option value="博館92">🚑 博館 92 (救護班)</option>
+            <option value="ALL">全部勤務 (救護協勤+值班台)</option>
+            <option value="救護協勤">🚑 救護協勤 (隊上待命)</option>
             <option value="值班台">🏢 值班台 (值班/補定訓)</option>
           </select>
 
@@ -400,12 +399,8 @@
           <strong id="calStatTotal">70 班</strong>
         </div>
         <div class="cal-stat-item" style="color: #38bdf8;">
-          <span>🚒 博館 91：</span>
-          <strong id="calStat91">36 班</strong>
-        </div>
-        <div class="cal-stat-item" style="color: #fb923c;">
-          <span>🚑 博館 92：</span>
-          <strong id="calStat92">34 班</strong>
+          <span>🚑 救護協勤待命：</span>
+          <strong id="calStatEms">70 班</strong>
         </div>
         <div class="cal-stat-item" style="color: #c084fc;">
           <span>🏢 值班台：</span>
@@ -571,8 +566,8 @@
         <!-- 圖表 2: 勤務類別佔比圓餅圖 -->
         <div class="glass-card" style="padding: 1.25rem;">
           <div style="margin-bottom: 1rem;">
-            <h3 style="font-size: 1.05rem; font-weight: 700;">🚒 車別與值班勤務配置佔比</h3>
-            <p style="font-size: 0.75rem; color: var(--text-muted);">救護班 91/92 與值班台比例</p>
+            <h3 style="font-size: 1.05rem; font-weight: 700;">🚑 協勤性質分佈佔比</h3>
+            <p style="font-size: 0.75rem; color: var(--text-muted);">救護協勤待命班與值班台比例</p>
           </div>
           <div style="height: 280px; position: relative; display: flex; align-items: center; justify-content: center;">
             <canvas id="chartVehicleBreakdown"></canvas>
@@ -914,8 +909,7 @@
           <div class="form-group">
             <label>勤務類別</label>
             <select id="inputShiftCategory" class="form-select">
-              <option value="救護班_91">🚒 救護班 - 博館 91 (上限4人)</option>
-              <option value="救護班_92">🚑 救護班 - 博館 92 (上限4人)</option>
+              <option value="救護班">🚑 救護協勤 (隊上待命・出勤隨車・上限4人)</option>
               <option value="值班台_一般">🏢 值班台 - 一般值班 (上限1人)</option>
               <option value="值班台_補定訓">🎓 值班台 - 補定訓 (固定4小時・上限1人)</option>
             </select>
@@ -967,7 +961,7 @@
       <div class="modal-title-row">
         <div>
           <h3 style="font-size: 1.25rem; font-weight: 700;" id="dayDetailTitle">📅 115年10月01日 (四) 排班詳情</h3>
-          <p style="font-size: 0.8rem; color: var(--text-muted);" id="dayDetailSub">博館分隊 91 / 92 救護車協勤值勤表</p>
+          <p style="font-size: 0.8rem; color: var(--text-muted);" id="dayDetailSub">博館分隊 救護待命與值班台協勤值勤表</p>
         </div>
         <button class="btn-close-modal" data-close-modal="modalDayDetail">&times;</button>
       </div>

@@ -25,7 +25,12 @@ class Store {
 let members = Store.get('members', INITIAL_MEMBERS);
 let attendance = Store.get('attendance', INITIAL_ATTENDANCE);
 let dispatches = Store.get('dispatches', INITIAL_DISPATCHES);
-let shifts = Store.get('shifts', INITIAL_SHIFTS);
+let shifts = Store.get('shifts', INITIAL_SHIFTS).map(s => {
+  if (s.vehicle === '博館91' || s.vehicle === '博館92') {
+    return { ...s, vehicle: '救護協勤' };
+  }
+  return s;
+});
 let currentMemberId = Store.get('currentMemberId', 'm1');
 let activeDuty = Store.get('activeDuty', null); // { memberId, startTime: timestamp, dateStr }
 
@@ -475,8 +480,8 @@ function renderVisualCalendar() {
 
   // 3. 生成 1~31 日期儲存格
   let statTotal = 0;
-  let stat91 = 0;
-  let stat92 = 0;
+  let statEms = 0;
+  let statDesk = 0;
   let statVacant = 0;
 
   for (let d = 1; d <= 31; d++) {
@@ -493,15 +498,21 @@ function renderVisualCalendar() {
     // 統計全月數據 (未過濾前)
     dayShifts.forEach(s => {
       statTotal++;
-      if (s.vehicle.includes('91')) stat91++;
-      if (s.vehicle.includes('92')) stat92++;
+      if (s.vehicle.includes('值班')) statDesk++;
+      else statEms++;
       if (!s.memberName || s.status === '缺協勤') statVacant++;
     });
 
     // 依篩選條件過濾顯示
     let visibleShifts = dayShifts;
     if (filterVehicle !== 'ALL') {
-      visibleShifts = visibleShifts.filter(s => s.vehicle === filterVehicle);
+      if (filterVehicle === '救護協勤') {
+        visibleShifts = visibleShifts.filter(s => !s.vehicle.includes('值班'));
+      } else if (filterVehicle === '值班台') {
+        visibleShifts = visibleShifts.filter(s => s.vehicle.includes('值班'));
+      } else {
+        visibleShifts = visibleShifts.filter(s => s.vehicle === filterVehicle);
+      }
     }
     if (calFilterVacantOnly) {
       visibleShifts = visibleShifts.filter(s => !s.memberName || s.status === '缺協勤');
@@ -532,9 +543,10 @@ function renderVisualCalendar() {
     visibleShifts.slice(0, maxChips).forEach(s => {
       const isVac = !s.memberName || s.status === '缺協勤';
       const isMine = s.memberName === curUser.name;
-      const vClass = s.vehicle.includes('91') ? 'chip-91' : 'chip-92';
-      const chipClass = isVac ? 'chip-vacant' : vClass;
-      const text = isVac ? `⚠️ 缺 ${s.vehicle.replace('博館','')} ${s.period}` : `${s.vehicle.replace('博館','')} ${s.memberName} ${s.period}`;
+      const isDesk = s.vehicle.includes('值班');
+      const chipClass = isVac ? 'chip-vacant' : (isDesk ? 'chip-desk' : 'chip-ems');
+      const vLabel = isDesk ? (s.vehicle.includes('補定訓') ? '補定訓' : '值班') : '救護待命';
+      const text = isVac ? `⚠️ 缺 ${vLabel} ${s.period}` : `${vLabel} ${s.memberName} ${s.period}`;
       
       chipsHtml += `
         <div class="cal-shift-chip ${chipClass} ${isMine ? 'is-mine' : ''}" title="${s.vehicle} ${s.period} ${s.memberName || '缺協勤'}">
@@ -569,8 +581,8 @@ function renderVisualCalendar() {
 
   // 4. 更新上方資訊條
   document.getElementById('calStatTotal').textContent = `${statTotal} 班`;
-  document.getElementById('calStat91').textContent = `${stat91} 班`;
-  document.getElementById('calStat92').textContent = `${stat92} 班`;
+  if (document.getElementById('calStatEms')) document.getElementById('calStatEms').textContent = `${statEms} 班`;
+  if (document.getElementById('calStatDesk')) document.getElementById('calStatDesk').textContent = `${statDesk} 班`;
   document.getElementById('calStatVacant').textContent = `${statVacant} 班`;
 }
 
@@ -672,14 +684,14 @@ function validateShiftBooking(targetMember, date, vehicle, period, shiftType, ig
   const sameDayShifts = shifts.filter(s => s.date === date && s.id !== ignoreShiftId && s.memberName && s.status !== '缺席');
   const overlappingShifts = sameDayShifts.filter(s => isTimeOverlap(s.period, period));
 
-  // (A) 救護班 (博館91、博館92)：同時段最多 4 位同仁
-  const isEms = vehicle.includes('91') || vehicle.includes('92');
+  // (A) 救護班 (分隊待命協勤)：同時段最多 4 位同仁，哪台車出勤就隨車出勤
+  const isEms = !vehicle.includes('值班');
   if (isEms) {
-    const overlappingEms = overlappingShifts.filter(s => s.vehicle.includes('91') || s.vehicle.includes('92'));
+    const overlappingEms = overlappingShifts.filter(s => !s.vehicle.includes('值班'));
     if (overlappingEms.length >= 4) {
       return {
         ok: false,
-        reason: `⚠️【救護班額滿】\n分隊規定：同時段最多 4 位同仁救護班！\n該時段已有 4 位同仁排定：\n${overlappingEms.map(s => `• ${s.vehicle}：${s.memberName} (${s.period})`).join('\n')}\n請選擇其他時段。`
+        reason: `⚠️【救護協勤待命額滿】\n分隊規定：同一時段最多 4 位同仁於隊上待命協勤（哪台車出勤即隨車出勤）！\n該時段已有 4 位同仁待命：\n${overlappingEms.map(s => `• ${s.memberName} (${s.period})`).join('\n')}\n請選擇其他時段。`
       };
     }
   }
@@ -967,7 +979,7 @@ function openDayDetailModal(day) {
   const isOfficer = isCurrentOfficer();
 
   document.getElementById('dayDetailTitle').textContent = `📅 115年10月${dayStr}日 (週${weekday}) 排班詳情`;
-  document.getElementById('dayDetailSub').textContent = `博館分隊 91 / 92 救護車與值班台協勤 ｜ 當日共 ${dayShifts.length} 班次`;
+  document.getElementById('dayDetailSub').textContent = `博館分隊 救護待命與值班台協勤 ｜ 當日共 ${dayShifts.length} 班次`;
 
   const container = document.getElementById('dayDetailShiftsList');
   container.innerHTML = '';
@@ -978,7 +990,9 @@ function openDayDetailModal(day) {
     dayShifts.forEach(s => {
       const isVac = !s.memberName || s.status === '缺協勤';
       const isMine = s.memberName === curUser.name;
-      const vClass = s.vehicle.includes('91') ? 'v91' : (s.vehicle.includes('92') ? 'v92' : 'v-desk');
+      const isDesk = s.vehicle.includes('值班');
+      const vClass = isDesk ? 'v-desk' : 'v-ems';
+      const vDisplay = isDesk ? s.vehicle : '🚑 救護協勤 (隊上待命)';
 
       const card = document.createElement('div');
       card.style.cssText = `
@@ -1007,7 +1021,7 @@ function openDayDetailModal(day) {
 
       card.innerHTML = `
         <div style="display: flex; align-items: center; gap: 0.75rem;">
-          <span class="vehicle-pill ${vClass}">${s.vehicle}</span>
+          <span class="vehicle-pill ${vClass}">${vDisplay}</span>
           <div>
             <div style="font-family: var(--font-display); font-weight: 700; font-size: 1.05rem;">
               ${s.period}
@@ -1089,7 +1103,13 @@ function renderScheduleListView() {
 
   let list = shifts;
   if (filterVehicle !== 'ALL') {
-    list = list.filter(s => s.vehicle === filterVehicle);
+    if (filterVehicle === '救護協勤') {
+      list = list.filter(s => !s.vehicle.includes('值班'));
+    } else if (filterVehicle === '值班台') {
+      list = list.filter(s => s.vehicle.includes('值班'));
+    } else {
+      list = list.filter(s => s.vehicle === filterVehicle);
+    }
   }
   if (calFilterVacantOnly) {
     list = list.filter(s => !s.memberName || s.status === '缺協勤');
@@ -1099,7 +1119,9 @@ function renderScheduleListView() {
     const tr = document.createElement('tr');
     const isVacant = !s.memberName || s.status === '缺協勤';
     const isMine = s.memberName === curUser.name;
-    const vClass = s.vehicle.includes('91') ? 'v91' : (s.vehicle.includes('92') ? 'v92' : 'v-desk');
+    const isDesk = s.vehicle.includes('值班');
+    const vClass = isDesk ? 'v-desk' : 'v-ems';
+    const vDisplay = isDesk ? s.vehicle : '🚑 救護協勤 (隊上待命)';
     
     let actionBtnHtml = '';
     if (isVacant) {
@@ -1117,7 +1139,7 @@ function renderScheduleListView() {
     tr.innerHTML = `
       <td><strong>${s.date}</strong></td>
       <td>${s.dayOfWeek || ''}</td>
-      <td><span class="vehicle-pill ${vClass}">${s.vehicle}</span></td>
+      <td><span class="vehicle-pill ${vClass}">${vDisplay}</span></td>
       <td><span style="font-family: var(--font-display); font-weight: 600;">${s.period}</span></td>
       <td><span style="font-size: 0.8rem; color: var(--text-muted);">${s.shiftType}</span></td>
       <td>
@@ -1414,21 +1436,20 @@ function renderOfficerExecutiveDashboard() {
       });
     }
 
-    // Chart 2: Vehicle Breakdown Donut
+    // Chart 2: 協勤性質佔比 Donut
     const ctx2 = document.getElementById('chartVehicleBreakdown')?.getContext('2d');
     if (ctx2) {
-      const count91 = shifts.filter(s => s.vehicle.includes('91')).length;
-      const count92 = shifts.filter(s => s.vehicle.includes('92')).length;
+      const countEms = shifts.filter(s => !s.vehicle.includes('值班')).length;
       const countDesk = shifts.filter(s => s.vehicle.includes('值班')).length;
 
       if (chartVehicleBreakdownInstance) chartVehicleBreakdownInstance.destroy();
       chartVehicleBreakdownInstance = new Chart(ctx2, {
         type: 'doughnut',
         data: {
-          labels: ['博館 91 救護班', '博館 92 救護班', '值班台 (含補定訓)'],
+          labels: ['救護協勤 (隊上待命)', '值班台 (含補定訓)'],
           datasets: [{
-            data: [count91, count92, countDesk],
-            backgroundColor: ['#38bdf8', '#f97316', '#a855f7'],
+            data: [countEms, countDesk],
+            backgroundColor: ['#38bdf8', '#a855f7'],
             borderColor: '#0f172a',
             borderWidth: 2
           }]
@@ -1725,9 +1746,8 @@ function setupModals() {
     const isProxy = modalClaim.getAttribute('data-officer-proxy') === 'true';
 
     // 依據類別映射車輛與值班台標籤
-    let vehicle = '博館91';
-    if (catVal === '救護班_92') vehicle = '博館92';
-    else if (catVal === '值班台_一般') vehicle = '值班台';
+    let vehicle = '救護協勤';
+    if (catVal === '值班台_一般') vehicle = '值班台';
     else if (catVal === '值班台_補定訓') vehicle = '值班台 (補定訓)';
 
     const targetMember = members.find(m => m.name === memberName) || getCurrentMember();
