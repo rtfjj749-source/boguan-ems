@@ -1,4 +1,4 @@
-import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS, SQUAD_CONFIG } from './data.js?v=20261008_v16';
+import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS, SQUAD_CONFIG } from './data.js?v=20261008_v17';
 
 // ==========================================
 // 1. 資料持久化管理 (LocalStorage)
@@ -62,6 +62,10 @@ let attendance = Store.get('attendance', INITIAL_ATTENDANCE).map(a => {
   return a;
 });
 Store.set('attendance', attendance);
+if (!Store.get('dispatches_cleared_by_user_req_v2')) {
+  Store.set('dispatches', []);
+  Store.set('dispatches_cleared_by_user_req_v2', true);
+}
 let dispatches = Store.get('dispatches', INITIAL_DISPATCHES);
 // 清空預定排班以利乾淨測試 (清除舊版 localStorage 快取)
 if (!Store.get('shifts_cleared_for_testing_v3')) {
@@ -616,6 +620,7 @@ function renderDispatchList() {
 
 // 榮譽徽章牆渲染
 function renderBadges() {
+  if (!document.getElementById('badgesGrid')) return;
   const cur = getCurrentMember();
   document.getElementById('userBadgeAvatar').textContent = cur.avatar;
   document.getElementById('userBadgeName').textContent = cur.name;

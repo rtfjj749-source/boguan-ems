@@ -22,7 +22,7 @@
   <!-- Supabase JS Client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
-  <link rel="stylesheet" href="styles.css?v=20261008_v16">
+  <link rel="stylesheet" href="styles.css?v=20261008_v17">
 </head>
 <body>
 
@@ -68,9 +68,6 @@
       <button class="tab-btn" data-tab="tab-dispatches">
         <span>🚑</span> 救護出勤紀錄
       </button>
-      <button class="tab-btn" data-tab="tab-badges">
-        <span>🎖️</span> 榮譽徽章牆
-      </button>
       <button class="tab-btn" data-tab="tab-schedule">
         <span>📅</span> 排班日曆
       </button>
@@ -78,7 +75,7 @@
         <span>👥</span> 義消人員名單 <span style="font-size: 0.68rem; background: #06b6d4; color: #020617; padding: 1px 6px; border-radius: 99px; font-weight: 800; margin-left: 3px;">54人</span>
       </button>
       <button class="tab-btn" data-tab="tab-officer-dashboard" style="border: 1px solid rgba(245, 158, 11, 0.5); color: #fbbf24;">
-        <span>📈</span> 長官戰情列管圖
+        <span>📈</span> 資訊儀錶板
       </button>
       <button class="tab-btn" data-tab="tab-reports">
         <span>📊</span> 月底公文報表匯出
@@ -284,34 +281,6 @@
 
       <!-- 出勤卡片清單 -->
       <div id="dispatchCardsList" class="dispatch-list"></div>
-    </section>
-
-    <!-- ==================== TAB 3: 榮譽徽章牆 ==================== -->
-    <section id="tab-badges" class="tab-content" style="display: none;">
-      <!-- 個人榮譽頭像橫幅 -->
-      <div class="glass-card" style="background: linear-gradient(135deg, rgba(2, 132, 199, 0.25), rgba(15, 23, 42, 0.9)); margin-bottom: 1.5rem;">
-        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1.5rem;">
-          <div style="display: flex; align-items: center; gap: 1.25rem;">
-            <div style="font-size: 3.5rem; background: rgba(255,255,255,0.06); width: 80px; height: 80px; border-radius: 20px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.15);" id="userBadgeAvatar">👨‍🚒</div>
-            <div>
-              <div style="display: flex; align-items: center; gap: 0.6rem;">
-                <h2 style="font-size: 1.6rem; font-weight: 800;" id="userBadgeName">謝易庭</h2>
-                <span class="role-badge" id="userBadgeRole">隊員 (EMT-2)</span>
-              </div>
-              <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.25rem;" id="userBadgeJoined">
-                加入博館分隊：111-03-01 ｜ 累計協勤 480 hr
-              </p>
-            </div>
-          </div>
-          <div>
-            <div style="font-size: 0.8rem; color: var(--text-muted);">已解鎖成就勳章</div>
-            <div style="font-size: 1.8rem; font-weight: 800; color: #fbbf24; font-family: var(--font-display);" id="userBadgeUnlockedCount">0 / 8</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 徽章網格清單 -->
-      <div id="badgesGrid" class="badges-grid"></div>
     </section>
 
     <!-- ==================== TAB 4: 排班日曆 (視覺化月曆) ==================== -->
@@ -694,11 +663,9 @@
             <div style="display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.25rem;">
               <span style="font-size: 1.5rem;">📈</span>
               <h2 style="font-size: 1.35rem; font-weight: 800; color: #fff;">
-                博館分隊救護義消 - 協勤排班與出勤成效戰情列管大看板
+                博館分隊救護義消 - 資訊儀錶板
               </h2>
-              <span style="font-size: 0.75rem; background: rgba(245,158,11,0.2); color: #fbbf24; padding: 2px 8px; border-radius: 99px; font-weight: 700; border: 1px solid rgba(245,158,11,0.4);">
-                長官呈閱專用
-              </span>
+              <span style="font-size: 0.75rem; background: rgba(245,158,11,0.2); color: #fbbf24; padding: 2px 8px; border-radius: 99px; font-weight: 700; border: 1px solid rgba(245,158,11,0.4);">全隊資訊總覽</span>
             </div>
             <p style="font-size: 0.82rem; color: var(--text-muted);">
               列管週期：民國 115 年 10 月 ｜ 即時資料庫：Supabase 雲端即時連動 ｜ 呈核對象：分隊長、義消中隊長、大隊督導長官
@@ -847,16 +814,6 @@
           </table>
         </div>
       </div>
-
-      <!-- 第四層：公文審查與長官呈核簽章專區 -->
-      <div class="glass-card" style="background: rgba(15,23,42,0.95); border: 1px solid var(--border-subtle); padding: 1.5rem; margin-bottom: 1.5rem;">
-        <h4 style="font-size: 0.95rem; font-weight: 700; margin-bottom: 1rem; color: #cbd5e1;">🏛️ 臺中市政府消防局 鳳凰救護大隊 博館分隊 公文呈核與業務檢查審查簽章</h4>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-top: 1rem;">
-          <div style="border: 1px dashed rgba(255,255,255,0.2); border-radius: 8px; padding: 1rem; text-align: center; height: 110px; display: flex; flex-direction: column; justify-content: space-between;">
-            <div style="font-size: 0.82rem; color: var(--text-muted);">救護義消小隊長 簽章</div>
-            <div style="font-size: 1.05rem; font-weight: 700; color: #38bdf8;">林振傑</div>
-            <div style="font-size: 0.72rem; color: var(--text-dim);">民國 115 年 10 月 07 日</div>
-          </div>
 
           <div style="border: 1px dashed rgba(255,255,255,0.2); border-radius: 8px; padding: 1rem; text-align: center; height: 110px; display: flex; flex-direction: column; justify-content: space-between;">
             <div style="font-size: 0.82rem; color: var(--text-muted);">分隊業務承辦人 簽章</div>
@@ -1719,6 +1676,6 @@
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- 主邏輯 JS (附防快取版本) -->
-  <script type="module" src="app.js?v=20261008_v16"></script>
+  <script type="module" src="app.js?v=20261008_v17"></script>
 </body>
 </html>
