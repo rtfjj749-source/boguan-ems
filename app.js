@@ -1,4 +1,4 @@
-import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS, SQUAD_CONFIG } from './data.js?v=20261008_v23';
+import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS, SQUAD_CONFIG } from './data.js?v=20261008_v24';
 
 // ==========================================
 // 1. 資料持久化管理 (LocalStorage)
@@ -2877,12 +2877,201 @@ function deleteDispatchRecord(id) {
   playFeedbackSound('success');
 }
 
+
+// ==============================================================================
+// 救護出勤同仁多選管理系統 (Multi-Member Dispatch Selection & Sync)
+// ==============================================================================
+
+let currentDispatchSelectedMembers = [];
+
+function renderDispatchMemberChips() {
+  const container = document.getElementById('dispatchSelectedMembersChips');
+  const countBadge = document.getElementById('dispatchSelectedCountBadge');
+  if (!container) return;
+
+  if (currentDispatchSelectedMembers.length === 0) {
+    container.innerHTML = '<span style="color: var(--text-dim); font-size: 0.78rem;">尚未選擇義消（請由下方快速點選或下拉選取，支援 1~3 位同仁隨車出勤）</span>';
+  } else {
+    container.innerHTML = currentDispatchSelectedMembers.map(m => `
+      <span class="selected-member-chip">
+        <span>👨‍🚒 ${m.name}</span>
+        <span style="font-size: 0.7rem; opacity: 0.85; font-weight: normal;">(${m.level || 'EMT'})</span>
+        <button type="button" class="btn-remove-chip" data-remove-dispatch-member="${m.name}" title="移除此位出勤同仁">&times;</button>
+      </span>
+    `).join('');
+
+    container.querySelectorAll('[data-remove-dispatch-member]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const nameToRemove = btn.getAttribute('data-remove-dispatch-member');
+        currentDispatchSelectedMembers = currentDispatchSelectedMembers.filter(m => m.name !== nameToRemove);
+        renderDispatchMemberChips();
+        renderDispatchQuickMemberChips();
+      });
+    });
+  }
+
+  if (countBadge) {
+    const count = currentDispatchSelectedMembers.length;
+    countBadge.textContent = `已選擇 ${count} / 3 人`;
+    if (count >= 3) {
+      countBadge.style.color = '#fbbf24';
+      countBadge.textContent = `已達上限 3 / 3 人`;
+    } else {
+      countBadge.style.color = '#38bdf8';
+    }
+  }
+}
+
+function renderDispatchQuickMemberChips() {
+  const quickContainer = document.getElementById('dispatchQuickMemberChips');
+  if (!quickContainer) return;
+
+  const candidateNames = new Set();
+  if (activeDuty && activeDuty.memberName) candidateNames.add(activeDuty.memberName);
+  
+  const cur = getCurrentMember();
+  if (cur && cur.name !== '未登入' && cur.id !== 'm0') candidateNames.add(cur.name);
+
+  const todayShifts = shifts.filter(s => s.date === getCurrentRocDate() && s.memberName);
+  todayShifts.forEach(s => candidateNames.add(s.memberName));
+
+  ['盧秋如', '曾子庭', '林立強', '鄭暐勲', '洪銘聰'].forEach(n => candidateNames.add(n));
+
+  const candidates = Array.from(candidateNames)
+    .map(n => members.find(m => m.name === n))
+    .filter(Boolean)
+    .slice(0, 8);
+
+  quickContainer.innerHTML = candidates.map(m => {
+    const isSelected = currentDispatchSelectedMembers.some(sm => sm.name === m.name);
+    return `
+      <button type="button" class="login-chip-btn ${isSelected ? 'active' : ''}" data-quick-member="${m.name}" style="${isSelected ? 'background: rgba(56,189,248,0.25); border-color: #38bdf8; color: #38bdf8;' : ''}">
+        ${isSelected ? '✓ ' : '+ '}${m.name} (${m.level || 'EMT'})
+      </button>
+    `;
+  }).join('');
+
+  quickContainer.querySelectorAll('[data-quick-member]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const name = btn.getAttribute('data-quick-member');
+      const mem = members.find(m => m.name === name);
+      if (!mem) return;
+
+      const exists = currentDispatchSelectedMembers.some(m => m.name === name);
+      if (exists) {
+        currentDispatchSelectedMembers = currentDispatchSelectedMembers.filter(m => m.name !== name);
+      } else {
+        if (currentDispatchSelectedMembers.length >= 3) {
+          showToast('每趟救護出勤最多支援 3 位義消同仁！', '⚠️');
+          playFeedbackSound('alert');
+          return;
+        }
+        currentDispatchSelectedMembers.push(mem);
+      }
+      renderDispatchMemberChips();
+      renderDispatchQuickMemberChips();
+    });
+  });
+}
+
+function initDispatchMemberSelect() {
+  const select = document.getElementById('inputDispatchMemberSelect');
+  if (!select) return;
+  select.innerHTML = '<option value="">➕ 從全隊 54 位義消名冊選擇同仁加入...</option>';
+
+  const groups = {
+    'cadre': { label: '🏛️ 分隊幹部', el: document.createElement('optgroup') },
+    'squad1': { label: '🚒 第一小隊', el: document.createElement('optgroup') },
+    'squad2': { label: '🚒 第二小隊', el: document.createElement('optgroup') },
+    'squad3': { label: '🚒 第三小隊', el: document.createElement('optgroup') },
+    'central': { label: '🚒 中區小隊', el: document.createElement('optgroup') }
+  };
+  Object.values(groups).forEach(g => g.el.label = g.label);
+
+  members.forEach(m => {
+    if (m.id === 'm0') return;
+    const opt = document.createElement('option');
+    opt.value = m.name;
+    opt.textContent = `${m.name} (${m.level || 'EMT'}) - ${m.squad || ''}`;
+
+    if (m.squad === '分隊幹部') groups.cadre.el.appendChild(opt);
+    else if (m.squad === '第一小隊') groups.squad1.el.appendChild(opt);
+    else if (m.squad === '第二小隊') groups.squad2.el.appendChild(opt);
+    else if (m.squad === '第三小隊') groups.squad3.el.appendChild(opt);
+    else groups.central.el.appendChild(opt);
+  });
+
+  Object.values(groups).forEach(g => {
+    if (g.el.children.length > 0) select.appendChild(g.el);
+  });
+
+  // 加選按鈕事件綁定
+  const btnAdd = document.getElementById('btnAddDispatchMember');
+  if (btnAdd && !btnAdd._bound) {
+    btnAdd._bound = true;
+    btnAdd.addEventListener('click', () => {
+      const selectedName = select.value;
+      if (!selectedName) {
+        showToast('請先由下拉選單選取同仁！', '⚠️');
+        return;
+      }
+      const mem = members.find(m => m.name === selectedName);
+      if (!mem) return;
+      if (currentDispatchSelectedMembers.some(m => m.name === selectedName)) {
+        showToast(`【${selectedName}】已在出勤名單中！`, '⚠️');
+        return;
+      }
+      if (currentDispatchSelectedMembers.length >= 3) {
+        showToast('每趟救護出勤最多支援 3 位義消同仁！', '⚠️');
+        playFeedbackSound('alert');
+        return;
+      }
+      currentDispatchSelectedMembers.push(mem);
+      select.value = '';
+      renderDispatchMemberChips();
+      renderDispatchQuickMemberChips();
+    });
+  }
+
+  if (!select._bound) {
+    select._bound = true;
+    select.addEventListener('change', () => {
+      const selectedName = select.value;
+      if (!selectedName) return;
+      const mem = members.find(m => m.name === selectedName);
+      if (!mem) return;
+      if (currentDispatchSelectedMembers.some(m => m.name === selectedName)) {
+        showToast(`【${selectedName}】已在出勤名單中！`, '⚠️');
+        select.value = '';
+        return;
+      }
+      if (currentDispatchSelectedMembers.length >= 3) {
+        showToast('每趟救護出勤最多支援 3 位義消同仁！', '⚠️');
+        playFeedbackSound('alert');
+        select.value = '';
+        return;
+      }
+      currentDispatchSelectedMembers.push(mem);
+      select.value = '';
+      renderDispatchMemberChips();
+      renderDispatchQuickMemberChips();
+    });
+  }
+}
+
 function setupModals() {
   const modalDispatch = document.getElementById('modalNewDispatch');
   const modalClaim = document.getElementById('modalClaimShift');
 
   // 開啟出勤 Modal (重設為新增狀態)
   function openCreateDispatchModal() {
+    if (!isLoggedIn()) {
+      showToast('請先登入義消隊員或承辦人帳號！', '⚠️');
+      document.getElementById('modalLogin')?.classList.add('open');
+      return;
+    }
     modalDispatch.removeAttribute('data-edit-id');
     const title = modalDispatch.querySelector('h3');
     if (title) title.textContent = '🚑 登記救護出勤紀錄';
