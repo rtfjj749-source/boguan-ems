@@ -22,7 +22,7 @@
   <!-- Supabase JS Client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
-  <link rel="stylesheet" href="styles.css?v=20261008_v15">
+  <link rel="stylesheet" href="styles.css?v=20261008_v16">
 </head>
 <body>
 
@@ -73,6 +73,9 @@
       </button>
       <button class="tab-btn" data-tab="tab-schedule">
         <span>📅</span> 排班日曆
+      </button>
+      <button class="tab-btn" data-tab="tab-roster" style="border: 1px solid rgba(6, 182, 212, 0.6); color: #38bdf8; position: relative;">
+        <span>👥</span> 義消人員名單 <span style="font-size: 0.68rem; background: #06b6d4; color: #020617; padding: 1px 6px; border-radius: 99px; font-weight: 800; margin-left: 3px;">54人</span>
       </button>
       <button class="tab-btn" data-tab="tab-officer-dashboard" style="border: 1px solid rgba(245, 158, 11, 0.5); color: #fbbf24;">
         <span>📈</span> 長官戰情列管圖
@@ -508,6 +511,175 @@
               </tr>
             </thead>
             <tbody id="scheduleTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    
+    <!-- ==================== TAB: 義消人員名單 ==================== -->
+    <section id="tab-roster" class="tab-content" style="display: none;">
+      <!-- 頂部概覽看板 -->
+      <div class="roster-hero">
+        <div class="roster-hero-header">
+          <div class="roster-hero-title-group">
+            <div class="roster-hero-icon">👥</div>
+            <div>
+              <div class="roster-hero-title">
+                臺中市消防局 博館分隊救護義消編制名冊
+                <span style="font-size: 0.8rem; background: rgba(56,189,248,0.15); color: #38bdf8; padding: 2px 8px; border-radius: 99px; border: 1px solid rgba(56,189,248,0.3); font-weight: 700;">
+                  官方編制 54 人
+                </span>
+              </div>
+              <div class="roster-hero-subtitle">
+                由 5 位分隊核心幹部及 4 大小隊協同組成，具備完整 EMT 證照體系，全天候守護市民生命安全
+              </div>
+            </div>
+          </div>
+
+          <div class="roster-hero-actions">
+            <button id="btnExportRosterExcel" type="button" class="btn-primary" style="background: linear-gradient(135deg, #10b981, #059669); border: none; font-size: 0.85rem; padding: 0.55rem 1rem;">
+              <span>📥 匯出人員名冊 (Excel)</span>
+            </button>
+            <button id="btnPrintRoster" type="button" class="btn-secondary" style="font-size: 0.85rem; padding: 0.55rem 1rem;">
+              <span>🖨️ 列印名冊</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 6大編制數據儀表 -->
+        <div class="roster-stats-grid">
+          <div class="roster-stat-card highlight">
+            <div class="roster-stat-label"><span>👥</span> 全隊志工總編制</div>
+            <div class="roster-stat-val" id="rosterStatTotal">54 <span style="font-size: 0.85rem; font-weight: 500; color: var(--text-muted);">人</span></div>
+            <div class="roster-stat-sub">男女救護志工全體同仁</div>
+          </div>
+
+          <div class="roster-stat-card">
+            <div class="roster-stat-label"><span>🏛️</span> 分隊幹部</div>
+            <div class="roster-stat-val" style="color: #fbbf24;">5 <span style="font-size: 0.85rem; font-weight: 500; color: var(--text-muted);">人</span></div>
+            <div class="roster-stat-sub">決策督導與隊務行政</div>
+          </div>
+
+          <div class="roster-stat-card">
+            <div class="roster-stat-label"><span>🚒</span> 第一小隊</div>
+            <div class="roster-stat-val" style="color: #38bdf8;">12 <span style="font-size: 0.85rem; font-weight: 500; color: var(--text-muted);">人</span></div>
+            <div class="roster-stat-sub">小隊長 1 / 副小 1 / 隊員 10</div>
+          </div>
+
+          <div class="roster-stat-card">
+            <div class="roster-stat-label"><span>🚒</span> 第二小隊</div>
+            <div class="roster-stat-val" style="color: #34d399;">10 <span style="font-size: 0.85rem; font-weight: 500; color: var(--text-muted);">人</span></div>
+            <div class="roster-stat-sub">小隊長 1 / 副小 1 / 隊員 8</div>
+          </div>
+
+          <div class="roster-stat-card">
+            <div class="roster-stat-label"><span>🚒</span> 第三小隊</div>
+            <div class="roster-stat-val" style="color: #c084fc;">12 <span style="font-size: 0.85rem; font-weight: 500; color: var(--text-muted);">人</span></div>
+            <div class="roster-stat-sub">小隊長 1 / 副小 1 / 隊員 10</div>
+          </div>
+
+          <div class="roster-stat-card">
+            <div class="roster-stat-label"><span>🚒</span> 中區小隊</div>
+            <div class="roster-stat-val" style="color: #60a5fa;">15 <span style="font-size: 0.85rem; font-weight: 500; color: var(--text-muted);">人</span></div>
+            <div class="roster-stat-sub">中區協勤責任編制</div>
+          </div>
+        </div>
+
+        <!-- EMT 證照體系分析進度條 -->
+        <div class="roster-cert-bar-card">
+          <div class="roster-cert-bar-header">
+            <span>🎖️ 全隊 EMT 救護證照等級結構分佈</span>
+            <span id="rosterCertSummaryText" style="color: #38bdf8; font-weight: 600;">TP 9人・T2 26人・T1 18人・待訓 1人</span>
+          </div>
+          <div class="roster-cert-progress">
+            <div class="roster-cert-seg tp" style="width: 16.7%;" title="EMT-P (TP) 高級救護技術員: 9人 (16.7%)"></div>
+            <div class="roster-cert-seg t2" style="width: 48.1%;" title="EMT-2 (T2) 中級救護技術員: 26人 (48.1%)"></div>
+            <div class="roster-cert-seg t1" style="width: 33.3%;" title="EMT-1 (T1) 初級救護技術員: 18人 (33.3%)"></div>
+            <div class="roster-cert-seg pending" style="width: 1.9%;" title="待訓 / 新進隊員: 1人 (1.9%)"></div>
+          </div>
+          <div class="roster-cert-legend">
+            <div class="roster-cert-legend-item">
+              <span class="roster-cert-dot" style="background: #a855f7;"></span>
+              <strong>EMT-P (TP) 高級救護技術員</strong>：9 人 (16.7%)
+            </div>
+            <div class="roster-cert-legend-item">
+              <span class="roster-cert-dot" style="background: #06b6d4;"></span>
+              <strong>EMT-2 (T2) 中級救護技術員</strong>：26 人 (48.1%)
+            </div>
+            <div class="roster-cert-legend-item">
+              <span class="roster-cert-dot" style="background: #f59e0b;"></span>
+              <strong>EMT-1 (T1) 初級救護技術員</strong>：18 人 (33.3%)
+            </div>
+            <div class="roster-cert-legend-item">
+              <span class="roster-cert-dot" style="background: #64748b;"></span>
+              <strong>新進培訓中</strong>：1 人 (1.9%)
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 工具列：即時搜尋、檢視切換與分組篩選 -->
+      <div class="roster-toolbar">
+        <div class="roster-toolbar-top">
+          <div class="roster-search-box">
+            <span class="roster-search-icon">🔍</span>
+            <input type="text" id="inputRosterSearch" class="roster-search-input" placeholder="輸入姓名、證照等級、小隊或職務快速搜尋 (如：鄭暐勲、TP、副小隊長)...">
+          </div>
+
+          <div class="roster-view-toggle">
+            <button id="btnRosterViewCards" type="button" class="roster-toggle-btn active">
+              <span>🗂️ 小隊架構卡片</span>
+            </button>
+            <button id="btnRosterViewTable" type="button" class="roster-toggle-btn">
+              <span>📋 完整清冊表格</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="roster-filter-row">
+          <span class="roster-filter-label">編制篩選：</span>
+          <button type="button" class="roster-chip active" data-squad="all">全部編制 <span class="roster-chip-count" id="countChipAll">54</span></button>
+          <button type="button" class="roster-chip" data-squad="分隊幹部">🏛️ 分隊幹部 <span class="roster-chip-count" id="countChipCadre">5</span></button>
+          <button type="button" class="roster-chip" data-squad="第一小隊">🚒 第一小隊 <span class="roster-chip-count" id="countChipSquad1">12</span></button>
+          <button type="button" class="roster-chip" data-squad="第二小隊">🚒 第二小隊 <span class="roster-chip-count" id="countChipSquad2">10</span></button>
+          <button type="button" class="roster-chip" data-squad="第三小隊">🚒 第三小隊 <span class="roster-chip-count" id="countChipSquad3">12</span></button>
+          <button type="button" class="roster-chip" data-squad="中區">🚒 中區 <span class="roster-chip-count" id="countChipCentral">15</span></button>
+        </div>
+
+        <div class="roster-filter-row">
+          <span class="roster-filter-label">證照篩選：</span>
+          <button type="button" class="roster-chip cert active" data-cert="all">全部證照</button>
+          <button type="button" class="roster-chip cert" data-cert="TP">🌟 EMT-P (TP)</button>
+          <button type="button" class="roster-chip cert" data-cert="T2">🛡️ EMT-2 (T2)</button>
+          <button type="button" class="roster-chip cert" data-cert="T1">🔰 EMT-1 (T1)</button>
+          <button type="button" class="roster-chip cert" data-cert="待訓">⏳ 待訓/新進</button>
+        </div>
+      </div>
+
+      <!-- 檢視模式 1: 小隊卡片架構檢視 -->
+      <div id="rosterCardsContainer"></div>
+
+      <!-- 檢視模式 2: 完整清冊表格檢視 -->
+      <div id="rosterTableContainer" style="display: none;">
+        <div class="glass-card" style="padding: 1.25rem; overflow-x: auto;">
+          <table class="styled-table" id="rosterStyledTable">
+            <thead>
+              <tr>
+                <th style="width: 50px;">#</th>
+                <th>姓名</th>
+                <th>所屬編制</th>
+                <th>隊部職務</th>
+                <th>EMT 證照等級</th>
+                <th>協勤累計時數</th>
+                <th>救護出勤次數</th>
+                <th>急救成功 (ROSC)</th>
+                <th>12-Lead ECG</th>
+                <th>靜脈注射 (IV)</th>
+                <th style="text-align: center;">身分切換</th>
+              </tr>
+            </thead>
+            <tbody id="rosterTableTbody"></tbody>
           </table>
         </div>
       </div>
@@ -1547,6 +1719,6 @@
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- 主邏輯 JS (附防快取版本) -->
-  <script type="module" src="app.js?v=20261008_v15"></script>
+  <script type="module" src="app.js?v=20261008_v16"></script>
 </body>
 </html>

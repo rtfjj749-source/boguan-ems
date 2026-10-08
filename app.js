@@ -1,4 +1,4 @@
-import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS } from './data.js?v=20261008_v14';
+import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS, SQUAD_CONFIG } from './data.js?v=20261008_v16';
 
 // ==========================================
 // 1. 資料持久化管理 (LocalStorage)
@@ -22,30 +22,39 @@ class Store {
   }
 }
 
-let members = Store.get('members', INITIAL_MEMBERS);
-// 確保分隊警消承辦人 (m0) 存在於 members 名單中
-if (!members.some(m => m.id === 'm0')) {
-  const m0 = INITIAL_MEMBERS.find(m => m.id === 'm0') || {
-    id: 'm0',
-    name: '分隊警消承辦人',
-    idNo: 'B120000001',
-    role: '分隊警消承辦人',
-    level: '分隊承辦人 (最高全域管理權限)',
-    avatar: '👮‍♂️',
-    phone: '04-23210119',
-    joined: '博館分隊',
-    totalHours: 999.0,
-    totalDispatches: 999,
-    roscCount: 99,
-    ecgCount: 99,
-    ivCount: 99,
-    isRestricted: false,
-    restrictionUntil: null,
-    makeupTrainingStatus: 'eligible'
-  };
-  members.unshift(m0);
-  Store.set('members', members);
+function syncOfficialMembers(storedList) {
+  const storedMap = new Map();
+  if (Array.isArray(storedList)) {
+    storedList.forEach(m => {
+      if (m && m.name) storedMap.set(m.name, m);
+      if (m && m.id) storedMap.set(m.id, m);
+    });
+  }
+
+  return INITIAL_MEMBERS.map(official => {
+    const existing = storedMap.get(official.id) || storedMap.get(official.name);
+    if (existing) {
+      return {
+        ...official,
+        totalHours: existing.totalHours !== undefined ? existing.totalHours : official.totalHours,
+        totalDispatches: existing.totalDispatches !== undefined ? existing.totalDispatches : official.totalDispatches,
+        roscCount: existing.roscCount !== undefined ? existing.roscCount : official.roscCount,
+        ecgCount: existing.ecgCount !== undefined ? existing.ecgCount : official.ecgCount,
+        ivCount: existing.ivCount !== undefined ? existing.ivCount : official.ivCount,
+        phone: existing.phone || official.phone,
+        joined: existing.joined || official.joined,
+        isRestricted: existing.isRestricted !== undefined ? existing.isRestricted : official.isRestricted,
+        restrictionUntil: existing.restrictionUntil !== undefined ? existing.restrictionUntil : official.restrictionUntil,
+        makeupTrainingStatus: existing.makeupTrainingStatus || official.makeupTrainingStatus,
+        idNo: existing.idNo || official.idNo
+      };
+    }
+    return { ...official };
+  });
 }
+
+let members = syncOfficialMembers(Store.get('members', INITIAL_MEMBERS));
+Store.set('members', members);
 let attendance = Store.get('attendance', INITIAL_ATTENDANCE).map(a => {
   if (a.note && (a.note.includes('91車') || a.note.includes('92車'))) {
     return { ...a, note: a.note.replace(/9[12]車/g, '救護協勤') };
@@ -284,22 +293,46 @@ function initMemberSelector() {
   if (adminAttSelect) adminAttSelect.innerHTML = '';
   if (adminShiftSelect) adminShiftSelect.innerHTML = '';
 
-  const adminGroup = document.createElement('optgroup');
-  adminGroup.label = '👑 分隊管理長官 / 承辦人';
-  const volunteerGroup = document.createElement('optgroup');
-  volunteerGroup.label = '🚒 救護義消志工同仁';
+  const groups = {
+    'admin': { label: '👑 分隊管理長官 / 承辦人', el: document.createElement('optgroup') },
+    'cadre': { label: '🏛️ 分隊幹部 (5人)', el: document.createElement('optgroup') },
+    'squad1': { label: '🚒 第一小隊 (12人)', el: document.createElement('optgroup') },
+    'squad2': { label: '🚒 第二小隊 (10人)', el: document.createElement('optgroup') },
+    'squad3': { label: '🚒 第三小隊 (12人)', el: document.createElement('optgroup') },
+    'central': { label: '🚒 中區小隊 (15人)', el: document.createElement('optgroup') }
+  };
+
+  Object.values(groups).forEach(g => {
+    g.el.label = g.label;
+  });
 
   members.forEach(m => {
-    const isAdm = m.id === 'm0' || m.role.includes('警消') || m.role.includes('承辦人');
+    const isAdm = m.id === 'm0' || (m.role && (m.role.includes('警消') || m.role.includes('承辦人')));
     const opt = document.createElement('option');
     opt.value = m.id;
-    opt.textContent = isAdm ? `👮‍♂️ ${m.name} (${m.level})` : `${m.name} (${m.level})`;
+
+    let rolePrefix = '';
+    if (isAdm) rolePrefix = '👮‍♂️ ';
+    else if (m.squadRole === '幹部') rolePrefix = '🎖️ ';
+    else if (m.squadRole === '小隊長') rolePrefix = '⭐ ';
+    else if (m.squadRole === '副小隊長') rolePrefix = '🌟 ';
+
+    const roleDetail = m.squadRole && m.squadRole !== '隊員' ? ` (${m.squadRole}・${m.level})` : ` (${m.level})`;
+    opt.textContent = `${rolePrefix}${m.name}${roleDetail}`;
     if (m.id === currentMemberId) opt.selected = true;
 
     if (isAdm) {
-      adminGroup.appendChild(opt);
+      groups.admin.el.appendChild(opt);
+    } else if (m.squad === '分隊幹部') {
+      groups.cadre.el.appendChild(opt);
+    } else if (m.squad === '第一小隊') {
+      groups.squad1.el.appendChild(opt);
+    } else if (m.squad === '第二小隊') {
+      groups.squad2.el.appendChild(opt);
+    } else if (m.squad === '第三小隊') {
+      groups.squad3.el.appendChild(opt);
     } else {
-      volunteerGroup.appendChild(opt);
+      groups.central.el.appendChild(opt);
     }
 
     if (modalMemberSelect) {
@@ -312,21 +345,22 @@ function initMemberSelector() {
     if (adminAttSelect) {
       const opt3 = document.createElement('option');
       opt3.value = m.id;
-      opt3.textContent = `${m.name} (${m.role}・${m.level})`;
+      opt3.textContent = `${m.name} (${m.squad || ''}・${m.squadRole || m.role}・${m.level})`;
       adminAttSelect.appendChild(opt3);
     }
 
     if (adminShiftSelect) {
       const opt4 = document.createElement('option');
       opt4.value = m.name;
-      opt4.textContent = `${m.name} (${m.level})`;
+      opt4.textContent = `${m.name} (${m.squad || ''}・${m.level})`;
       adminShiftSelect.appendChild(opt4);
     }
   });
 
   if (select) {
-    select.appendChild(adminGroup);
-    select.appendChild(volunteerGroup);
+    Object.values(groups).forEach(g => {
+      if (g.el.children.length > 0) select.appendChild(g.el);
+    });
 
     select.addEventListener('change', (e) => {
       currentMemberId = e.target.value;
@@ -3712,6 +3746,412 @@ function setupTabs() {
 }
 
 // ==========================================
+
+// ==========================================
+// 8.5. 義消人員名單管理模組 (Roster Module)
+// ==========================================
+let rosterFilterState = {
+  search: '',
+  squad: 'all',
+  cert: 'all',
+  viewMode: 'cards' // 'cards' | 'table'
+};
+
+// 讓 HTML 內能呼叫直接切換同仁
+window.switchMemberDirectly = function(targetMemberId) {
+  const target = members.find(m => m.id === targetMemberId);
+  if (!target) return;
+  currentMemberId = target.id;
+  Store.set('currentMemberId', currentMemberId);
+  
+  // 更新 navbar 的下拉選單值
+  const sel = document.getElementById('memberSelect');
+  if (sel) sel.value = target.id;
+  
+  updateAllViews();
+  const isAdm = isSuperAdmin();
+  showToast(isAdm ? '已切換至【分隊警消承辦人】最高全域管理模式' : `已切換登入身分為：${target.name} (${target.level})`, isAdm ? '👮‍♂️' : '👤');
+};
+
+function renderRosterView() {
+  const cardsContainer = document.getElementById('rosterCardsContainer');
+  const tableContainer = document.getElementById('rosterTableContainer');
+  const tbody = document.getElementById('rosterTableTbody');
+  if (!cardsContainer) return;
+
+  // 取得除了 m0 承辦人以外的所有 54 位義消同仁
+  const volunteerList = members.filter(m => m.id !== 'm0' && !m.role.includes('警消'));
+
+  // 進行篩選
+  const query = (rosterFilterState.search || '').trim().toLowerCase();
+  const filtered = volunteerList.filter(m => {
+    // 搜尋比對 (姓名, 證照, 小隊, 職位)
+    if (query) {
+      const matchName = m.name.toLowerCase().includes(query);
+      const matchLevel = (m.level || '').toLowerCase().includes(query) || (m.levelCode || '').toLowerCase().includes(query);
+      const matchSquad = (m.squad || '').toLowerCase().includes(query);
+      const matchRole = (m.squadRole || '').toLowerCase().includes(query) || (m.role || '').toLowerCase().includes(query);
+      if (!matchName && !matchLevel && !matchSquad && !matchRole) return false;
+    }
+
+    // 小隊篩選
+    if (rosterFilterState.squad !== 'all') {
+      if (m.squad !== rosterFilterState.squad) return false;
+    }
+
+    // 證照篩選
+    if (rosterFilterState.cert !== 'all') {
+      if (rosterFilterState.cert === 'TP' && m.levelCode !== 'TP' && !m.level.includes('TP')) return false;
+      if (rosterFilterState.cert === 'T2' && m.levelCode !== 'T2' && !m.level.includes('EMT-2')) return false;
+      if (rosterFilterState.cert === 'T1' && m.levelCode !== 'T1' && !m.level.includes('EMT-1')) return false;
+      if (rosterFilterState.cert === '待訓' && m.levelCode !== '待訓' && !m.level.includes('待訓')) return false;
+    }
+
+    return true;
+  });
+
+  // 更新頂部各統計徽章計數
+  const countAll = volunteerList.length;
+  const countCadre = volunteerList.filter(m => m.squad === '分隊幹部').length;
+  const countSquad1 = volunteerList.filter(m => m.squad === '第一小隊').length;
+  const countSquad2 = volunteerList.filter(m => m.squad === '第二小隊').length;
+  const countSquad3 = volunteerList.filter(m => m.squad === '第三小隊').length;
+  const countCentral = volunteerList.filter(m => m.squad === '中區').length;
+
+  const setElText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  setElText('countChipAll', countAll);
+  setElText('countChipCadre', countCadre);
+  setElText('countChipSquad1', countSquad1);
+  setElText('countChipSquad2', countSquad2);
+  setElText('countChipSquad3', countSquad3);
+  setElText('countChipCentral', countCentral);
+
+  // 1. 卡片檢視渲染
+  if (rosterFilterState.viewMode === 'cards') {
+    cardsContainer.style.display = 'block';
+    if (tableContainer) tableContainer.style.display = 'none';
+
+    if (filtered.length === 0) {
+      cardsContainer.innerHTML = `
+        <div class="glass-card" style="text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
+          <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🔍</div>
+          <div style="font-size: 1.1rem; font-weight: 700; color: #f8fafc;">查無符合條件的義消同仁</div>
+          <p style="font-size: 0.85rem; margin-top: 0.25rem;">請嘗試調整搜尋關鍵字或清除篩選條件</p>
+        </div>
+      `;
+      return;
+    }
+
+    // 定義 5 大編制分組
+    const squads = [
+      { id: '分隊幹部', name: '分隊幹部', icon: '🏛️', isCadre: true, desc: '隊務策劃、協勤行政督導與救護品管核心' },
+      { id: '第一小隊', name: '第一小隊', icon: '🚒', isCadre: false, desc: '第一救護協勤責任分組 (小隊長 鄭暐勲 / 副小隊長 洪銘聰)' },
+      { id: '第二小隊', name: '第二小隊', icon: '🚒', isCadre: false, desc: '第二救護協勤責任分組 (小隊長 李忠南 / 副小隊長 謝易庭)' },
+      { id: '第三小隊', name: '第三小隊', icon: '🚒', isCadre: false, desc: '第三救護協勤責任分組 (小隊長 曾子庭 / 副小隊長 林立強)' },
+      { id: '中區',     name: '中區',     icon: '🚒', isCadre: false, desc: '中區責任責任編制救護同仁協勤組' }
+    ];
+
+    let html = '';
+
+    squads.forEach(sq => {
+      // 找出該小隊內符合篩選的隊員
+      const squadMembers = filtered.filter(m => m.squad === sq.id);
+      if (squadMembers.length === 0) return;
+
+      // 排序：小隊長最先、副小隊長其次、幹部次之、其餘隊員
+      squadMembers.sort((a, b) => {
+        const order = { '小隊長': 1, '副小隊長': 2, '幹部': 3, '隊員': 4 };
+        const oa = order[a.squadRole] || 5;
+        const ob = order[b.squadRole] || 5;
+        return oa - ob;
+      });
+
+      html += `
+        <div class="roster-squad-section ${sq.isCadre ? 'cadre-section' : ''}">
+          <div class="roster-squad-header">
+            <div class="roster-squad-title-group">
+              <span class="roster-squad-icon">${sq.icon}</span>
+              <div>
+                <div class="roster-squad-title">${sq.name}</div>
+                <div class="roster-squad-desc">${sq.desc}</div>
+              </div>
+            </div>
+            <div class="roster-squad-badge">
+              編制同仁 ${squadMembers.length} 人
+            </div>
+          </div>
+
+          <div class="roster-cards-grid">
+            ${squadMembers.map(m => renderMemberCardHtml(m)).join('')}
+          </div>
+        </div>
+      `;
+    });
+
+    cardsContainer.innerHTML = html;
+  } else {
+    // 2. 表格檢視渲染
+    cardsContainer.style.display = 'none';
+    if (tableContainer) tableContainer.style.display = 'block';
+
+    if (tbody) {
+      if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align: center; color: var(--text-muted); padding: 2.5rem;">查無符合條件之人員</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = filtered.map((m, idx) => {
+        const isCur = m.id === currentMemberId;
+        return `
+          <tr style="${isCur ? 'background: rgba(6,182,212,0.1); font-weight: 700;' : ''}">
+            <td style="color: var(--text-dim); text-align: center;">${idx + 1}</td>
+            <td>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="font-size: 1.2rem;">${m.avatar}</span>
+                <span style="font-weight: 700; color: #f8fafc;">${m.name}</span>
+                ${isCur ? '<span style="font-size: 0.7rem; background: #06b6d4; color: #000; padding: 1px 6px; border-radius: 4px; font-weight: 800;">目前</span>' : ''}
+              </div>
+            </td>
+            <td><span style="color: #38bdf8;">${m.squad || '-'}</span></td>
+            <td>${renderRoleTagHtml(m)}</td>
+            <td>${renderCertBadgeHtml(m)}</td>
+            <td style="color: #34d399; font-weight: 700;">${(m.totalHours || 0).toFixed(1)} hr</td>
+            <td style="font-weight: 700;">${m.totalDispatches || 0} 次</td>
+            <td style="color: #ef4444; font-weight: 700;">${m.roscCount || 0} 例</td>
+            <td style="color: #06b6d4;">${m.ecgCount || 0} 例</td>
+            <td style="color: #c084fc;">${m.ivCount || 0} 例</td>
+            <td style="text-align: center;">
+              ${isCur ? 
+                '<span style="color: #34d399; font-size: 0.8rem;">● 登入中</span>' : 
+                `<button type="button" class="btn-switch-member" style="padding: 3px 8px; font-size: 0.72rem;" onclick="switchMemberDirectly('${m.id}')">切換登入</button>`
+              }
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+  }
+}
+
+function renderRoleTagHtml(m) {
+  if (m.squadRole === '幹部') return '<span class="roster-role-tag cadre">🎖️ 幹部</span>';
+  if (m.squadRole === '小隊長') return '<span class="roster-role-tag leader">⭐ 小隊長</span>';
+  if (m.squadRole === '副小隊長') return '<span class="roster-role-tag deputy">🌟 副小隊長</span>';
+  return '<span class="roster-role-tag member">隊員</span>';
+}
+
+function renderCertBadgeHtml(m) {
+  const code = m.levelCode || '';
+  if (code === 'TP' || m.level.includes('TP')) {
+    return '<span class="cert-badge tp">🌟 EMT-P (TP)</span>';
+  } else if (code === 'T2' || m.level.includes('EMT-2')) {
+    return '<span class="cert-badge t2">🛡️ EMT-2 (中級)</span>';
+  } else if (code === 'T1' || m.level.includes('EMT-1')) {
+    return '<span class="cert-badge t1">🔰 EMT-1 (初級)</span>';
+  } else {
+    return '<span class="cert-badge pending">⏳ 待訓 / 新進</span>';
+  }
+}
+
+function renderMemberCardHtml(m) {
+  const isCur = m.id === currentMemberId;
+  const isCadre = m.squadRole === '幹部';
+  const isLeader = m.squadRole === '小隊長';
+  const isDeputy = m.squadRole === '副小隊長';
+
+  let cardClasses = 'roster-member-card';
+  if (isCur) cardClasses += ' is-current';
+  if (isCadre) cardClasses += ' cadre-card';
+  if (isLeader) cardClasses += ' leader-card';
+  if (isDeputy) cardClasses += ' deputy-card';
+
+  let avatarGlow = '';
+  if (isCadre) avatarGlow = 'glow-cadre';
+  if (isLeader) avatarGlow = 'glow-leader';
+  if (isDeputy) avatarGlow = 'glow-deputy';
+
+  return `
+    <div class="${cardClasses}">
+      <div class="roster-card-top">
+        <div class="roster-avatar ${avatarGlow}">
+          ${m.avatar}
+        </div>
+        <div class="roster-name-group">
+          <div class="roster-name-row">
+            <span class="roster-name">${m.name}</span>
+            ${renderRoleTagHtml(m)}
+          </div>
+          <div style="font-size: 0.72rem; color: var(--text-dim); margin-top: 2px;">
+            ${m.squad || ''}・資歷 ${m.joined || '博館分隊'}
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        ${renderCertBadgeHtml(m)}
+        <span style="font-size: 0.72rem; color: var(--text-dim); font-family: monospace;">${m.phone || ''}</span>
+      </div>
+
+      <div class="roster-card-stats">
+        <div class="roster-card-stat-item">
+          <span>⏱️</span>
+          <span><strong>${(m.totalHours || 0).toFixed(1)}</strong> hr</span>
+        </div>
+        <div class="roster-card-stat-item">
+          <span>🚑</span>
+          <span><strong>${m.totalDispatches || 0}</strong> 趟</span>
+        </div>
+        <div class="roster-card-stat-item" title="ROSC 現場急救成功心跳恢復">
+          <span style="color: #f87171;">⚡</span>
+          <span><strong>${m.roscCount || 0}</strong> ROSC</span>
+        </div>
+      </div>
+
+      <div class="roster-card-actions">
+        ${isCur ? 
+          `<button type="button" class="btn-switch-member active-login" disabled>
+              <span>✅ 目前已登入中</span>
+            </button>` :
+          `<button type="button" class="btn-switch-member" onclick="switchMemberDirectly('${m.id}')">
+              <span>👤 切換由此人登入</span>
+            </button>`
+        }
+      </div>
+    </div>
+  `;
+}
+
+function setupRosterControls() {
+  // 1. 搜尋輸入監聽
+  const searchInput = document.getElementById('inputRosterSearch');
+  searchInput?.addEventListener('input', (e) => {
+    rosterFilterState.search = e.target.value;
+    renderRosterView();
+  });
+
+  // 2. 小隊篩選晶片
+  document.querySelectorAll('.roster-chip[data-squad]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.roster-chip[data-squad]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      rosterFilterState.squad = btn.getAttribute('data-squad');
+      renderRosterView();
+    });
+  });
+
+  // 3. 證照篩選晶片
+  document.querySelectorAll('.roster-chip[data-cert]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.roster-chip[data-cert]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      rosterFilterState.cert = btn.getAttribute('data-cert');
+      renderRosterView();
+    });
+  });
+
+  // 4. 檢視模式切換
+  const btnCards = document.getElementById('btnRosterViewCards');
+  const btnTable = document.getElementById('btnRosterViewTable');
+
+  btnCards?.addEventListener('click', () => {
+    btnCards.classList.add('active');
+    btnTable?.classList.remove('active');
+    rosterFilterState.viewMode = 'cards';
+    renderRosterView();
+  });
+
+  btnTable?.addEventListener('click', () => {
+    btnTable.classList.add('active');
+    btnCards?.classList.remove('active');
+    rosterFilterState.viewMode = 'table';
+    renderRosterView();
+  });
+
+  // 5. 匯出 Excel
+  document.getElementById('btnExportRosterExcel')?.addEventListener('click', exportRosterToExcel);
+
+  // 6. 友善列印
+  document.getElementById('btnPrintRoster')?.addEventListener('click', () => {
+    window.print();
+  });
+}
+
+function exportRosterToExcel() {
+  if (typeof XLSX === 'undefined') {
+    showToast('SheetJS 模組載入中，請稍候重試...', '⚠️');
+    return;
+  }
+
+  const wb = XLSX.utils.book_new();
+
+  // 取得除了 m0 承辦人以外的所有 54 位義消同仁
+  const volunteerList = members.filter(m => m.id !== 'm0' && !m.role.includes('警消'));
+
+  // 排序：依小隊順序與職務
+  const squadOrder = { '分隊幹部': 1, '第一小隊': 2, '第二小隊': 3, '第三小隊': 4, '中區': 5 };
+  const roleOrder = { '幹部': 1, '小隊長': 2, '副小隊長': 3, '隊員': 4 };
+
+  const sortedList = [...volunteerList].sort((a, b) => {
+    const sa = squadOrder[a.squad] || 99;
+    const sb = squadOrder[b.squad] || 99;
+    if (sa !== sb) return sa - sb;
+    const ra = roleOrder[a.squadRole] || 99;
+    const rb = roleOrder[b.squadRole] || 99;
+    return ra - rb;
+  });
+
+  const now = new Date();
+  const dateStr = `${now.getFullYear() - 1911}年${now.getMonth() + 1}月${now.getDate()}日`;
+
+  const excelRows = [
+    ['臺中市消防局 鳳凰救護大隊 博館分隊 救護義消同仁編制與證照名冊'],
+    [`製表日期：${dateStr}`, '', '', `官方編制人數：${sortedList.length} 人`, '', '', '單位：博館分隊救護義消'],
+    [],
+    ['編號', '所屬編制', '隊部職務', '姓名', 'EMT證照等級', '證照簡稱', '累計協勤時數', '救護出勤次數', '現場急救(ROSC)', '12導程心電圖', '靜脈注射(IV)', '聯絡電話', '入隊資歷']
+  ];
+
+  sortedList.forEach((m, idx) => {
+    excelRows.push([
+      idx + 1,
+      m.squad || '',
+      m.squadRole || m.role || '',
+      m.name,
+      m.level || '',
+      m.levelCode || '',
+      m.totalHours || 0,
+      m.totalDispatches || 0,
+      m.roscCount || 0,
+      m.ecgCount || 0,
+      m.ivCount || 0,
+      m.phone || '',
+      m.joined || ''
+    ]);
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(excelRows);
+  
+  // 設定欄寬
+  ws['!cols'] = [
+    { wch: 6 },  // 編號
+    { wch: 14 }, // 所屬編制
+    { wch: 14 }, // 隊部職務
+    { wch: 12 }, // 姓名
+    { wch: 22 }, // EMT證照等級
+    { wch: 10 }, // 證照簡稱
+    { wch: 14 }, // 累計協勤時數
+    { wch: 14 }, // 救護出勤次數
+    { wch: 14 }, // ROSC
+    { wch: 14 }, // ECG
+    { wch: 14 }, // IV
+    { wch: 16 }, // 電話
+    { wch: 14 }  // 入隊
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, '義消人員名冊');
+  XLSX.writeFile(wb, `博館分隊救護義消人員編制與證照名冊(${sortedList.length}人).xlsx`);
+  showToast(`已成功匯出 ${sortedList.length} 位救護義消完整名冊 Excel！`, '📊');
+}
+
 // 初始化執行
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
@@ -3723,6 +4163,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupDeviceToggle();
   setupCalendarControls();
   setupTabs();
+  setupRosterControls();
   startClock();
   initSupabase();
   updateAllViews();

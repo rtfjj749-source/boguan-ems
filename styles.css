@@ -201,9 +201,10 @@ body {
 
 .tabs-bar {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
-  background: rgba(15, 23, 42, 0.7);
-  padding: 0.35rem;
+  background: rgba(15, 23, 42, 0.85);
+  padding: 0.5rem;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-subtle);
   overflow-x: auto;
@@ -1836,3 +1837,661 @@ body {
 
 
 
+
+/* ==============================================================================
+   義消人員名單 (Roster Management) - 高質感 EMS 現代深色科技主題
+   ============================================================================== */
+
+.roster-hero {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.85) 0%, rgba(30, 41, 59, 0.7) 100%);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.6), 0 0 25px -5px rgba(6, 182, 212, 0.2);
+}
+
+.roster-hero::before {
+  content: '';
+  position: absolute;
+  top: -50px;
+  right: -50px;
+  width: 220px;
+  height: 220px;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.18) 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.roster-hero-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+
+.roster-hero-title-group {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.roster-hero-icon {
+  width: 56px;
+  height: 56px;
+  background: linear-gradient(135deg, #0284c7, #06b6d4);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.4);
+}
+
+.roster-hero-title {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #f8fafc;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.roster-hero-subtitle {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  margin-top: 0.2rem;
+}
+
+.roster-hero-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.roster-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.85rem;
+  margin-bottom: 1.25rem;
+}
+
+.roster-stat-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  transition: var(--transition);
+}
+
+.roster-stat-card:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(56, 189, 248, 0.35);
+  transform: translateY(-2px);
+}
+
+.roster-stat-card.highlight {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.12), rgba(2, 132, 199, 0.06));
+  border-color: rgba(6, 182, 212, 0.4);
+}
+
+.roster-stat-label {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.roster-stat-val {
+  font-size: 1.5rem;
+  font-weight: 800;
+  font-family: var(--font-display);
+  color: #f8fafc;
+}
+
+.roster-stat-sub {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+/* 證照分佈進度條 */
+.roster-cert-bar-card {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 1rem 1.25rem;
+}
+
+.roster-cert-bar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #cbd5e1;
+}
+
+.roster-cert-progress {
+  height: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 99px;
+  overflow: hidden;
+  display: flex;
+  margin-bottom: 0.75rem;
+}
+
+.roster-cert-seg {
+  height: 100%;
+  transition: width 0.4s ease;
+  position: relative;
+}
+
+.roster-cert-seg.tp {
+  background: linear-gradient(90deg, #8b5cf6, #a855f7);
+}
+
+.roster-cert-seg.t2 {
+  background: linear-gradient(90deg, #06b6d4, #0ea5e9);
+}
+
+.roster-cert-seg.t1 {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.roster-cert-seg.pending {
+  background: #64748b;
+}
+
+.roster-cert-legend {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: 0.78rem;
+}
+
+.roster-cert-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-muted);
+}
+
+.roster-cert-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* 工具列與篩選器 */
+.roster-toolbar {
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.roster-toolbar-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.roster-search-box {
+  flex: 1;
+  min-width: 260px;
+  position: relative;
+}
+
+.roster-search-input {
+  width: 100%;
+  padding: 0.65rem 1rem 0.65rem 2.5rem;
+  background: rgba(2, 6, 23, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-sm);
+  color: #f8fafc;
+  font-size: 0.88rem;
+  outline: none;
+  transition: var(--transition);
+}
+
+.roster-search-input:focus {
+  border-color: #38bdf8;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+}
+
+.roster-search-icon {
+  position: absolute;
+  left: 0.85rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-dim);
+  font-size: 0.95rem;
+  pointer-events: none;
+}
+
+.roster-view-toggle {
+  display: inline-flex;
+  background: rgba(2, 6, 23, 0.7);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+  gap: 3px;
+}
+
+.roster-toggle-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  padding: 0.45rem 0.85rem;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: var(--transition);
+}
+
+.roster-toggle-btn.active {
+  background: rgba(6, 182, 212, 0.25);
+  color: #38bdf8;
+  border: 1px solid rgba(6, 182, 212, 0.4);
+}
+
+.roster-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.roster-filter-label {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  font-weight: 700;
+  margin-right: 0.25rem;
+}
+
+.roster-chip {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-muted);
+  padding: 0.35rem 0.75rem;
+  border-radius: 99px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: var(--transition);
+}
+
+.roster-chip:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.roster-chip.active {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: #38bdf8;
+  color: #38bdf8;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+}
+
+.roster-chip-count {
+  background: rgba(0, 0, 0, 0.35);
+  padding: 1px 6px;
+  border-radius: 99px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+/* 小隊區塊卡片 */
+.roster-squad-section {
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  margin-bottom: 1.75rem;
+  position: relative;
+  transition: var(--transition);
+}
+
+.roster-squad-section.cadre-section {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.06), rgba(15, 23, 42, 0.85));
+  border-color: rgba(245, 158, 11, 0.35);
+  box-shadow: 0 8px 30px -8px rgba(245, 158, 11, 0.15);
+}
+
+.roster-squad-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.roster-squad-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.roster-squad-icon {
+  font-size: 1.6rem;
+}
+
+.roster-squad-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.roster-squad-desc {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.roster-squad-badge {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 0.3rem 0.85rem;
+  border-radius: 99px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #38bdf8;
+}
+
+/* 隊員卡片網格 */
+.roster-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 1rem;
+}
+
+.roster-member-card {
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  padding: 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  position: relative;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+.roster-member-card:hover {
+  background: rgba(30, 41, 59, 0.85);
+  border-color: rgba(56, 189, 248, 0.4);
+  transform: translateY(-3px);
+  box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.5), 0 0 15px -3px rgba(6, 182, 212, 0.2);
+}
+
+.roster-member-card.is-current {
+  border-color: #38bdf8;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.15), rgba(15, 23, 42, 0.8));
+  box-shadow: 0 0 18px rgba(6, 182, 212, 0.35);
+}
+
+.roster-member-card.cadre-card {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(30, 41, 59, 0.6));
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.roster-member-card.cadre-card:hover {
+  border-color: #fbbf24;
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.25);
+}
+
+.roster-member-card.leader-card {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.1), rgba(30, 41, 59, 0.6));
+  border-color: rgba(56, 189, 248, 0.4);
+}
+
+.roster-member-card.deputy-card {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(30, 41, 59, 0.6));
+  border-color: rgba(139, 92, 246, 0.4);
+}
+
+.roster-card-top {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.roster-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  flex-shrink: 0;
+}
+
+.roster-avatar.glow-cadre {
+  border-color: rgba(245, 158, 11, 0.6);
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.3);
+}
+
+.roster-avatar.glow-leader {
+  border-color: rgba(56, 189, 248, 0.6);
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.3);
+}
+
+.roster-avatar.glow-deputy {
+  border-color: rgba(139, 92, 246, 0.6);
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.3);
+}
+
+.roster-name-group {
+  flex: 1;
+  min-width: 0;
+}
+
+.roster-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.roster-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.roster-role-tag {
+  font-size: 0.7rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.roster-role-tag.cadre {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.roster-role-tag.leader {
+  background: rgba(6, 182, 212, 0.2);
+  color: #38bdf8;
+  border: 1px solid rgba(6, 182, 212, 0.4);
+}
+
+.roster-role-tag.deputy {
+  background: rgba(139, 92, 246, 0.2);
+  color: #c084fc;
+  border: 1px solid rgba(139, 92, 246, 0.4);
+}
+
+.roster-role-tag.member {
+  background: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+}
+
+/* 證照等級徽章 */
+.cert-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  width: fit-content;
+}
+
+.cert-badge.tp {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(99, 102, 241, 0.2));
+  color: #c084fc;
+  border: 1px solid rgba(139, 92, 246, 0.5);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.2);
+}
+
+.cert-badge.t2 {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(14, 165, 233, 0.15));
+  color: #38bdf8;
+  border: 1px solid rgba(6, 182, 212, 0.45);
+}
+
+.cert-badge.t1 {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(249, 115, 22, 0.15));
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+}
+
+.cert-badge.pending {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.roster-card-stats {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  background: rgba(0, 0, 0, 0.2);
+  padding: 0.4rem 0.65rem;
+  border-radius: var(--radius-sm);
+}
+
+.roster-card-stat-item {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.roster-card-stat-item strong {
+  color: #e2e8f0;
+}
+
+.roster-card-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: auto;
+}
+
+.btn-switch-member {
+  flex: 1;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: #38bdf8;
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  transition: var(--transition);
+}
+
+.btn-switch-member:hover {
+  background: rgba(56, 189, 248, 0.25);
+  border-color: #38bdf8;
+  color: #ffffff;
+}
+
+.btn-switch-member.active-login {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: #10b981;
+  color: #34d399;
+}
+
+/* 列印友善排版 */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  .navbar, .tabs-container, .roster-toolbar, .btn-switch-member, .roster-hero-actions, .toast-container {
+    display: none !important;
+  }
+  #tab-roster {
+    display: block !important;
+  }
+  .roster-hero {
+    background: #ffffff !important;
+    border: 1px solid #000000 !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+  }
+  .roster-hero-title, .roster-hero-subtitle, .roster-name {
+    color: #000000 !important;
+  }
+  .roster-squad-section {
+    background: #ffffff !important;
+    border: 1px solid #cccccc !important;
+    page-break-inside: avoid;
+  }
+  .roster-member-card {
+    background: #ffffff !important;
+    border: 1px solid #dddddd !important;
+    color: #000000 !important;
+  }
+  .cert-badge {
+    border: 1px solid #999999 !important;
+    color: #000000 !important;
+    background: #eeeeee !important;
+  }
+}
