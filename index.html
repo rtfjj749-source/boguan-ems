@@ -22,7 +22,7 @@
   <!-- Supabase JS Client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
-  <link rel="stylesheet" href="styles.css?v=20261008_v19">
+  <link rel="stylesheet" href="styles.css?v=20261008_v20">
 </head>
 <body>
 
@@ -379,32 +379,7 @@
         </div>
       </div>
 
-      <!-- 小隊幹部專用審查與違規管制面板 (僅幹部可見/可操作) -->
-      <div id="officerAuditPanel" class="glass-card" style="border: 1px solid rgba(245,158,11,0.3); margin-bottom: 1.25rem; display: none;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
-          <div style="display: flex; align-items: center; gap: 0.5rem;">
-            <span style="font-size: 1.2rem;">👮</span>
-            <h4 style="font-size: 1rem; font-weight: 700; color: #fbbf24;">小隊幹部專區：全隊預約班次審查與累犯管制</h4>
-          </div>
-          <span style="font-size: 0.75rem; color: var(--text-muted);">幹部權限：階段(1)提醒、階段(2)刪除並限制2個月、幹部代填</span>
-        </div>
-        <div class="schedule-table-wrap">
-          <table class="styled-table" style="font-size: 0.82rem;">
-            <thead>
-              <tr>
-                <th>隊員姓名</th>
-                <th>職稱等級</th>
-                <th>目前預約班數</th>
-                <th>額度狀態</th>
-                <th>管制期限</th>
-                <th>幹部處置操作</th>
-              </tr>
-            </thead>
-            <tbody id="officerAuditTbody"></tbody>
-          </table>
-        </div>
-      </div>
-
+      
       <!-- 日曆頂部導覽列與控制項 -->
       <div class="calendar-top-bar">
         <div class="calendar-month-nav">
@@ -1882,6 +1857,6 @@
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- 主邏輯 JS (附防快取版本) -->
-  <script type="module" src="app.js?v=20261008_v19"></script>
+  <script type="module" src="app.js?v=20261008_v20"></script>
 </body>
 </html>
