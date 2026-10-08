@@ -1,4 +1,4 @@
-import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS, SQUAD_CONFIG } from './data.js?v=20261008_v18';
+import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS, SQUAD_CONFIG } from './data.js?v=20261008_v19';
 
 // ==========================================
 // 1. 資料持久化管理 (LocalStorage)
@@ -82,7 +82,8 @@ let shifts = Store.get('shifts', INITIAL_SHIFTS)
     return { ...s, vehicle: v };
   });
 Store.set('shifts', shifts);
-let currentMemberId = Store.get('currentMemberId', 'm1');
+let currentAuthUser = Store.get('current_auth_user', null);
+let currentMemberId = currentAuthUser ? currentAuthUser.memberId : null;
 let activeDuty = Store.get('activeDuty', null); // { memberId, startTime: timestamp, dateStr }
 let cancellationLogs = Store.get('cancellation_logs', [
   {
@@ -268,14 +269,37 @@ function showToast(msg, icon = '✅') {
 // 3. UI 渲染核心函數
 // ==========================================
 function getCurrentMember() {
-  return members.find(m => m.id === currentMemberId) || members[0];
+  if (currentMemberId) {
+    const found = members.find(m => m.id === currentMemberId);
+    if (found) return found;
+  }
+  return {
+    id: 'guest',
+    name: '未登入',
+    role: '訪客',
+    squad: '未登入',
+    squadRole: '訪客',
+    level: '訪客',
+    isRestricted: false,
+    phone: '',
+    joined: '',
+    totalHours: 0,
+    totalDispatches: 0,
+    roscCount: 0,
+    ecgCount: 0,
+    ivCount: 0
+  };
+}
+
+// 判斷當前是否已有使用者通過身分驗證登入
+function isLoggedIn() {
+  return !!currentAuthUser && currentMemberId !== null && currentMemberId !== 'guest';
 }
 
 // 判斷當前登入者是否具備分隊警消承辦人最高管理權限
 function isSuperAdmin() {
-  const m = getCurrentMember();
-  if (!m) return false;
-  return m.id === 'm0' || m.role.includes('警消') || m.role.includes('承辦人');
+  if (!currentAuthUser) return false;
+  return currentAuthUser.isAdmin || currentAuthUser.username === '博館' || currentMemberId === 'm0';
 }
 
 // 判斷當前登入者是否具備小隊幹部或警消承辦人權限
@@ -1235,6 +1259,11 @@ function cancelShift(shiftId) {
 
 // 一鍵「⚡ 先填先站位」
 function claimSlotInstantly(date, period, category) {
+  if (!isLoggedIn()) {
+    showToast('請先登入義消同仁帳號方可預定排班！', '⚠️');
+    document.getElementById('modalLogin')?.classList.add('open');
+    return;
+  }
   const cur = getCurrentMember();
   const vehicle = category === '值班' ? '值班台' : '救護協勤';
   const shiftType = category === '值班' ? '幹部值班' : '自排班';
@@ -2277,6 +2306,7 @@ function renderOfficerExecutiveDashboard() {
 }
 
 function updateAllViews() {
+  updateUserNavbarUi();
   updateDutyHero();
   updatePersonalSummary();
   renderRecentAttendance();
@@ -2285,6 +2315,7 @@ function updateAllViews() {
   renderSchedule();
   renderSummaryReports();
   renderOfficerExecutiveDashboard();
+  renderAdminPasswordTrackingTable();
 }
 
 // ==========================================
@@ -2343,6 +2374,11 @@ function minutesToTime(mins) {
 
 // 核心打卡簽到執行邏輯
 function performPunchIn(actualTimeStr = null, reason = '') {
+  if (!isLoggedIn()) {
+    showToast('請先登入義消同仁帳號方可進行協勤簽到！', '⚠️');
+    document.getElementById('modalLogin')?.classList.add('open');
+    return;
+  }
   const cur = getCurrentMember();
   const now = new Date();
   const dateStr = getCurrentRocDate();
@@ -3160,6 +3196,11 @@ function setupModals() {
   // 表單 2: 自排班登記 (嚴格套用所有排班法規驗證，警消可指定任何隊員)
   document.getElementById('formClaimShift')?.addEventListener('submit', (e) => {
     e.preventDefault();
+    if (!isLoggedIn()) {
+      showToast('請先登入義消同仁帳號方可預定排班！', '⚠️');
+      document.getElementById('modalLogin')?.classList.add('open');
+      return;
+    }
     const date = document.getElementById('inputShiftDate').value;
     const catVal = document.getElementById('inputShiftCategory').value;
     const rawPeriod = document.getElementById('inputShiftPeriod').value.trim();
@@ -3342,8 +3383,7 @@ function setupModals() {
     mem.makeupTrainingStatus = document.getElementById('adminMemberMakeupStatus').value;
 
     Store.set('members', members);
-    setupAuthSystem();
-  initMemberSelector();
+    initMemberSelector();
     document.getElementById('modalAdminEditMember')?.classList.remove('open');
     updateAllViews();
     showToast(`已成功覆寫更新隊員【${mem.name}】檔案資料與管制狀態！`, '👮‍♂️');
@@ -4160,7 +4200,504 @@ function exportRosterToExcel() {
 
 // 初始化執行
 // ==========================================
+
+// ==============================================================================
+// 義消同仁帳號身分驗證與密碼安全管理系統 (Authentication & Password Management)
+// ==============================================================================
+
+let currentPwdFilter = 'ALL'; // 'ALL', 'PENDING', 'DONE'
+let tempPendingUser = null;
+
+// 取得或初始化全隊帳號清單 (包含 1 位承辦人 + 54 位義消同仁)
+function getUserAccounts() {
+  let accs = Store.get('user_accounts', null);
+  if (!accs || !Array.isArray(accs) || accs.length === 0) {
+    accs = [];
+    // 警消承辦人帳號 (代號: 博館，預設密碼: 0000)
+    accs.push({
+      id: 'acc-admin',
+      username: '博館',
+      name: '警消承辦人',
+      memberId: 'm0',
+      password: '0000',
+      hasChangedPassword: true,
+      passwordChangedAt: null,
+      isAdmin: true
+    });
+    // 54 位義消同仁帳號 (帳號: 中文姓名，預設密碼: 1234，首次登入強制變更)
+    members.forEach(m => {
+      if (m.id !== 'm0') {
+        accs.push({
+          id: `acc-${m.id}`,
+          username: m.name,
+          name: m.name,
+          memberId: m.id,
+          password: '1234',
+          hasChangedPassword: false,
+          passwordChangedAt: null,
+          isAdmin: false
+        });
+      }
+    });
+    Store.set('user_accounts', accs);
+  } else {
+    // 確保新增的義消隊員都有對應帳號
+    let updated = false;
+    members.forEach(m => {
+      if (m.id !== 'm0') {
+        const found = accs.find(a => a.username === m.name || a.memberId === m.id);
+        if (!found) {
+          accs.push({
+            id: `acc-${m.id}`,
+            username: m.name,
+            name: m.name,
+            memberId: m.id,
+            password: '1234',
+            hasChangedPassword: false,
+            passwordChangedAt: null,
+            isAdmin: false
+          });
+          updated = true;
+        }
+      }
+    });
+    if (!accs.find(a => a.username === '博館')) {
+      accs.unshift({
+        id: 'acc-admin',
+        username: '博館',
+        name: '警消承辦人',
+        memberId: 'm0',
+        password: '0000',
+        hasChangedPassword: true,
+        passwordChangedAt: null,
+        isAdmin: true
+      });
+      updated = true;
+    }
+    if (updated) Store.set('user_accounts', accs);
+  }
+  return accs;
+}
+
+// 同步更新導覽列的登入狀態與身分呈現
+function updateUserNavbarUi() {
+  const badgeWrapper = document.getElementById('userAuthBadgeWrapper');
+  const unauthWrapper = document.getElementById('unauthenticatedWrapper');
+  const adminWrapper = document.getElementById('adminSimulateWrapper');
+  const adminBanner = document.getElementById('adminModeBanner');
+  const adminPwdCard = document.getElementById('adminPasswordTrackingCard');
+
+  if (currentAuthUser) {
+    if (badgeWrapper) badgeWrapper.style.display = 'flex';
+    if (unauthWrapper) unauthWrapper.style.display = 'none';
+
+    const avatarEl = document.getElementById('currentUserAvatar');
+    const nameEl = document.getElementById('currentUserName');
+    const pillEl = document.getElementById('currentUserPill');
+    const roleBadgeEl = document.getElementById('currentMemberRoleBadge');
+
+    const cur = getCurrentMember();
+    const isAdm = isSuperAdmin();
+
+    if (avatarEl) avatarEl.textContent = isAdm ? '👮‍♂️' : '👨‍🚒';
+    if (nameEl) nameEl.textContent = isAdm ? '警消承辦人' : cur.name;
+    if (pillEl) {
+      pillEl.className = isAdm ? 'current-user-pill admin-pill' : 'current-user-pill';
+    }
+    if (roleBadgeEl) {
+      if (isAdm) {
+        roleBadgeEl.textContent = '👑 警消承辦人';
+        roleBadgeEl.style.color = '#fbbf24';
+        roleBadgeEl.style.borderColor = 'rgba(245, 158, 11, 0.4)';
+        roleBadgeEl.style.background = 'rgba(245, 158, 11, 0.15)';
+      } else {
+        roleBadgeEl.textContent = cur.level ? `⭐ ${cur.level}` : '⭐ 隊員';
+        roleBadgeEl.style.color = '#38bdf8';
+        roleBadgeEl.style.borderColor = 'rgba(56, 189, 248, 0.3)';
+        roleBadgeEl.style.background = 'rgba(56, 189, 248, 0.15)';
+      }
+    }
+
+    // 承辦人專屬介面連動
+    if (isAdm) {
+      if (adminWrapper) adminWrapper.style.display = 'flex';
+      if (adminBanner) adminBanner.style.display = 'flex';
+      if (adminPwdCard) adminPwdCard.style.display = 'block';
+    } else {
+      if (adminWrapper) adminWrapper.style.display = 'none';
+      if (adminBanner) adminBanner.style.display = 'none';
+      if (adminPwdCard) adminPwdCard.style.display = 'none';
+    }
+  } else {
+    // 尚未登入狀態
+    if (badgeWrapper) badgeWrapper.style.display = 'none';
+    if (unauthWrapper) unauthWrapper.style.display = 'flex';
+    if (adminWrapper) adminWrapper.style.display = 'none';
+    if (adminBanner) adminBanner.style.display = 'none';
+    if (adminPwdCard) adminPwdCard.style.display = 'none';
+  }
+}
+
+// 警消承辦人：全隊義消同仁密碼變更列管看板渲染
+function renderAdminPasswordTrackingTable() {
+  const card = document.getElementById('adminPasswordTrackingCard');
+  if (!card || !isSuperAdmin()) return;
+
+  const accounts = getUserAccounts().filter(a => !a.isAdmin); // 54 位義消同仁
+  const total = accounts.length;
+  const pendingList = accounts.filter(a => !a.hasChangedPassword);
+  const changedList = accounts.filter(a => a.hasChangedPassword);
+  const totalChanged = changedList.length;
+  const totalPending = pendingList.length;
+  const rate = total > 0 ? Math.round((totalChanged / total) * 100) : 0;
+
+  const statTotal = document.getElementById('pwdStatTotal');
+  const statPending = document.getElementById('pwdStatPending');
+  const statChanged = document.getElementById('pwdStatChanged');
+  const statRate = document.getElementById('pwdStatRate');
+
+  if (statTotal) statTotal.innerHTML = `${total} <span style="font-size: 0.82rem; color: var(--text-muted);">人</span>`;
+  if (statPending) statPending.innerHTML = `${totalPending} <span style="font-size: 0.82rem; color: var(--text-muted);">人</span>`;
+  if (statChanged) statChanged.innerHTML = `${totalChanged} <span style="font-size: 0.82rem; color: var(--text-muted);">人</span>`;
+  if (statRate) statRate.textContent = `${rate}%`;
+
+  let displayList = accounts;
+  if (currentPwdFilter === 'PENDING') displayList = pendingList;
+  else if (currentPwdFilter === 'DONE') displayList = changedList;
+
+  const tbody = document.getElementById('adminPasswordTableTbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  displayList.forEach((acc, idx) => {
+    const mem = members.find(m => m.id === acc.memberId) || { squad: '隊員', squadRole: '隊員', level: 'EMT' };
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${idx + 1}</td>
+      <td style="font-weight: 700; color: #f8fafc;">${acc.name}</td>
+      <td>${mem.squad || '-'}</td>
+      <td>${mem.squadRole || mem.role || '隊員'} (${mem.level || 'EMT'})</td>
+      <td><code style="background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px; color: #38bdf8;">${acc.username}</code></td>
+      <td>
+        ${acc.hasChangedPassword ? 
+          `<span class="pwd-status-pill done"><span>✅</span> 已變更專屬密碼</span>` : 
+          `<span class="pwd-status-pill pending"><span>⚠️</span> 尚未變更 (預設 1234)</span>`}
+      </td>
+      <td style="color: var(--text-muted); font-size: 0.8rem;">
+        ${acc.passwordChangedAt || '尚未完成首次登入'}
+      </td>
+      <td style="text-align: center;">
+        <button type="button" class="btn-reset-pwd" data-reset-account="${acc.username}" title="若同仁忘記密碼，重設為預設密碼 1234">
+          <span>🔄 重設為 1234</span>
+        </button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  // 綁定一鍵重設密碼按鈕
+  tbody.querySelectorAll('[data-reset-account]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const u = btn.getAttribute('data-reset-account');
+      if (confirm(`確定要將【${u}】的登入密碼重設為預設值 1234 嗎？\n重設後，該隊員下次登入將再次被強制要求設定專屬新密碼。`)) {
+        const allAccs = getUserAccounts();
+        const target = allAccs.find(a => a.username === u);
+        if (target) {
+          target.password = '1234';
+          target.hasChangedPassword = false;
+          target.passwordChangedAt = null;
+          Store.set('user_accounts', allAccs);
+          renderAdminPasswordTrackingTable();
+          showToast(`已成功將【${u}】密碼重設為預設 1234！`, '🔑');
+        }
+      }
+    });
+  });
+}
+
+// 匯出全隊密碼變更進度清冊 Excel
+function exportPasswordTrackingExcel() {
+  const accounts = getUserAccounts().filter(a => !a.isAdmin);
+  const wb = XLSX.utils.book_new();
+  const rows = [
+    ['編號', '姓名', '所屬編制', '隊部職務', 'EMT證照', '登入帳號', '密碼狀態', '預設密碼', '密碼變更時間']
+  ];
+
+  accounts.forEach((acc, i) => {
+    const mem = members.find(m => m.id === acc.memberId) || {};
+    rows.push([
+      i + 1,
+      acc.name,
+      mem.squad || '',
+      mem.squadRole || mem.role || '隊員',
+      mem.level || '',
+      acc.username,
+      acc.hasChangedPassword ? '已變更專屬密碼' : '尚未變更密碼',
+      acc.hasChangedPassword ? '已啟用個人防護' : '1234',
+      acc.passwordChangedAt || '尚未變更'
+    ]);
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [
+    { wch: 6 },
+    { wch: 12 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 12 },
+    { wch: 12 },
+    { wch: 18 },
+    { wch: 14 },
+    { wch: 22 }
+  ];
+  XLSX.utils.book_append_sheet(wb, ws, '密碼變更列管清冊');
+  XLSX.writeFile(wb, `博館分隊救護義消登入密碼變更進度清冊(${accounts.length}人).xlsx`);
+  showToast('已成功匯出全隊密碼列管清冊 Excel！', '📥');
+}
+
+// 初始化所有登入、登出與密碼變更事件監聽器
+function setupAuthSystem() {
+  // 1. 全域快速填入掛載 (供登入視窗內的快捷按鈕使用)
+  window.quickFillLogin = function(username, pwd) {
+    const uInput = document.getElementById('inputLoginUsername');
+    const pInput = document.getElementById('inputLoginPassword');
+    if (uInput) uInput.value = username;
+    if (pInput) pInput.value = pwd;
+    pInput?.focus();
+  };
+
+  const modalLogin = document.getElementById('modalLogin');
+  const modalFirst = document.getElementById('modalFirstChangePassword');
+  const modalChange = document.getElementById('modalChangePassword');
+
+  // 2. 開啟登入彈窗按鈕
+  document.getElementById('btnOpenLoginModal')?.addEventListener('click', () => {
+    modalLogin?.classList.add('open');
+    document.getElementById('inputLoginUsername')?.focus();
+  });
+
+  // 3. 登出按鈕
+  document.getElementById('btnLogout')?.addEventListener('click', () => {
+    currentAuthUser = null;
+    Store.set('current_auth_user', null);
+    currentMemberId = null;
+    Store.set('currentMemberId', null);
+    updateUserNavbarUi();
+    updateAllViews();
+    modalLogin?.classList.add('open');
+    showToast('您已成功安全登出系統！', '🚪');
+  });
+
+  // 4. 開啟自行變更密碼彈窗按鈕
+  document.getElementById('btnOpenChangePassword')?.addEventListener('click', () => {
+    if (!currentAuthUser) {
+      showToast('請先登入系統方可變更密碼！', '⚠️');
+      modalLogin?.classList.add('open');
+      return;
+    }
+    const oldInput = document.getElementById('inputOldPassword');
+    const newInput = document.getElementById('inputNewPasswordUser');
+    const confirmInput = document.getElementById('inputConfirmPasswordUser');
+    if (oldInput) oldInput.value = '';
+    if (newInput) newInput.value = '';
+    if (confirmInput) confirmInput.value = '';
+    modalChange?.classList.add('open');
+  });
+
+  // 5. 登入表單提交處理
+  document.getElementById('formLogin')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const uInput = document.getElementById('inputLoginUsername');
+    const pInput = document.getElementById('inputLoginPassword');
+    const username = uInput?.value.trim() || '';
+    const password = pInput?.value.trim() || '';
+
+    const allAccs = getUserAccounts();
+    const matched = allAccs.find(a => a.username === username);
+
+    if (!matched) {
+      showToast('找不到此帳號，請確認中文姓名或代號是否正確！', '❌');
+      playFeedbackSound('alert');
+      uInput?.focus();
+      return;
+    }
+
+    if (matched.password !== password) {
+      showToast('密碼錯誤！隊員預設密碼為 1234，承辦人為 0000', '❌');
+      playFeedbackSound('alert');
+      pInput?.focus();
+      return;
+    }
+
+    // 驗證成功！
+    // 若為義消同仁且尚未變更過密碼 (密碼仍為 1234)：強制先改密碼
+    if (!matched.isAdmin && !matched.hasChangedPassword) {
+      tempPendingUser = matched;
+      modalLogin?.classList.remove('open');
+      
+      const nameDisp = document.getElementById('firstLoginUserNameDisplay');
+      if (nameDisp) nameDisp.textContent = matched.name;
+      const fNew = document.getElementById('inputNewPasswordFirst');
+      const fConf = document.getElementById('inputConfirmPasswordFirst');
+      if (fNew) fNew.value = '';
+      if (fConf) fConf.value = '';
+      
+      modalFirst?.classList.add('open');
+      showToast(`歡迎【${matched.name}】！首次登入請先設定您的專屬新密碼以策安全。\n(請勿再使用 1234)`, '🛡️');
+      return;
+    }
+
+    // 登入完成 (已變更過密碼，或警消承辦人)
+    currentAuthUser = matched;
+    Store.set('current_auth_user', currentAuthUser);
+    currentMemberId = matched.memberId;
+    Store.set('currentMemberId', currentMemberId);
+
+    modalLogin?.classList.remove('open');
+    updateUserNavbarUi();
+    updateAllViews();
+    playFeedbackSound('success');
+    showToast(`登入成功！歡迎【${matched.name}】${matched.isAdmin ? '管理長官' : '同仁'}進入系統`, matched.isAdmin ? '👮‍♂️' : '👨‍🚒');
+  });
+
+  // 6. 首次登入強制變更密碼提交處理
+  document.getElementById('formFirstChangePassword')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!tempPendingUser) {
+      modalFirst?.classList.remove('open');
+      modalLogin?.classList.add('open');
+      return;
+    }
+
+    const newPwd = document.getElementById('inputNewPasswordFirst')?.value.trim() || '';
+    const confirmPwd = document.getElementById('inputConfirmPasswordFirst')?.value.trim() || '';
+
+    if (newPwd.length < 4) {
+      showToast('新密碼長度至少需要 4 碼！', '⚠️');
+      playFeedbackSound('alert');
+      return;
+    }
+
+    if (newPwd === '1234') {
+      showToast('新密碼不可再與預設密碼 1234 相同，請設定專屬新密碼！', '⚠️');
+      playFeedbackSound('alert');
+      return;
+    }
+
+    if (newPwd !== confirmPwd) {
+      showToast('兩次輸入的新密碼不一致，請再次確認！', '⚠️');
+      playFeedbackSound('alert');
+      return;
+    }
+
+    // 儲存新密碼
+    const allAccs = getUserAccounts();
+    const acc = allAccs.find(a => a.username === tempPendingUser.username);
+    if (acc) {
+      acc.password = newPwd;
+      acc.hasChangedPassword = true;
+      acc.passwordChangedAt = new Date().toLocaleString('zh-TW');
+      Store.set('user_accounts', allAccs);
+      tempPendingUser = acc;
+    }
+
+    // 轉為正式登入
+    currentAuthUser = tempPendingUser;
+    Store.set('current_auth_user', currentAuthUser);
+    currentMemberId = currentAuthUser.memberId;
+    Store.set('currentMemberId', currentMemberId);
+    tempPendingUser = null;
+
+    modalFirst?.classList.remove('open');
+    updateUserNavbarUi();
+    updateAllViews();
+    playFeedbackSound('success');
+    showToast(`🎉 專屬新密碼設定成功！已為您開通博館協勤系統全部權限！`, '✅');
+  });
+
+  // 7. 自行變更密碼表單提交處理
+  document.getElementById('formChangePassword')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!currentAuthUser) {
+      showToast('尚未登入！', '⚠️');
+      return;
+    }
+
+    const oldPwd = document.getElementById('inputOldPassword')?.value.trim() || '';
+    const newPwd = document.getElementById('inputNewPasswordUser')?.value.trim() || '';
+    const confirmPwd = document.getElementById('inputConfirmPasswordUser')?.value.trim() || '';
+
+    if (oldPwd !== currentAuthUser.password) {
+      showToast('目前舊密碼輸入錯誤，請重新確認！', '❌');
+      playFeedbackSound('alert');
+      return;
+    }
+
+    if (newPwd.length < 4) {
+      showToast('新密碼長度至少需要 4 碼！', '⚠️');
+      playFeedbackSound('alert');
+      return;
+    }
+
+    if (newPwd !== confirmPwd) {
+      showToast('兩次輸入的新密碼不一致！', '⚠️');
+      playFeedbackSound('alert');
+      return;
+    }
+
+    // 更新密碼
+    const allAccs = getUserAccounts();
+    const acc = allAccs.find(a => a.username === currentAuthUser.username);
+    if (acc) {
+      acc.password = newPwd;
+      acc.hasChangedPassword = true;
+      acc.passwordChangedAt = new Date().toLocaleString('zh-TW');
+      Store.set('user_accounts', allAccs);
+      currentAuthUser = acc;
+      Store.set('current_auth_user', currentAuthUser);
+    }
+
+    modalChange?.classList.remove('open');
+    updateUserNavbarUi();
+    updateAllViews();
+    playFeedbackSound('success');
+    showToast('個人密碼已成功變更，請妥善保管！', '🔐');
+  });
+
+  // 8. 密碼篩選按鈕
+  document.getElementById('btnFilterPwdAll')?.addEventListener('click', () => {
+    currentPwdFilter = 'ALL';
+    updateFilterChipStyles();
+    renderAdminPasswordTrackingTable();
+  });
+  document.getElementById('btnFilterPwdPending')?.addEventListener('click', () => {
+    currentPwdFilter = 'PENDING';
+    updateFilterChipStyles();
+    renderAdminPasswordTrackingTable();
+  });
+  document.getElementById('btnFilterPwdDone')?.addEventListener('click', () => {
+    currentPwdFilter = 'DONE';
+    updateFilterChipStyles();
+    renderAdminPasswordTrackingTable();
+  });
+
+  function updateFilterChipStyles() {
+    ['btnFilterPwdAll', 'btnFilterPwdPending', 'btnFilterPwdDone'].forEach(id => {
+      document.getElementById(id)?.classList.remove('active');
+    });
+    if (currentPwdFilter === 'ALL') document.getElementById('btnFilterPwdAll')?.classList.add('active');
+    else if (currentPwdFilter === 'PENDING') document.getElementById('btnFilterPwdPending')?.classList.add('active');
+    else if (currentPwdFilter === 'DONE') document.getElementById('btnFilterPwdDone')?.classList.add('active');
+  }
+
+  // 9. 匯出 Excel 按鈕
+  document.getElementById('btnExportPasswordExcel')?.addEventListener('click', () => {
+    exportPasswordTrackingExcel();
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  setupAuthSystem();
   initMemberSelector();
   populateShiftDatesDropdown();
   setupPunchEvents();
@@ -4172,6 +4709,10 @@ document.addEventListener('DOMContentLoaded', () => {
   setupRosterControls();
   startClock();
   initSupabase();
+  updateUserNavbarUi();
   updateAllViews();
+  if (!currentAuthUser) {
+    document.getElementById('modalLogin')?.classList.add('open');
+  }
 });
 

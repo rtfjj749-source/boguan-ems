@@ -22,7 +22,7 @@
   <!-- Supabase JS Client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
-  <link rel="stylesheet" href="styles.css?v=20261008_v18">
+  <link rel="stylesheet" href="styles.css?v=20261008_v19">
 </head>
 <body>
 
@@ -47,12 +47,12 @@
         <span>📱 切換視角</span>
       </button>
 
-      <!-- 登入身分與帳號狀態列 -->
-      <div id="userAuthBadgeWrapper" class="user-auth-badge">
+      <!-- 登入身分與帳號狀態列 (預設未登入，由 JS 判斷動態切換) -->
+      <div id="userAuthBadgeWrapper" class="user-auth-badge" style="display: none;">
         <div id="currentUserPill" class="current-user-pill">
           <span id="currentUserAvatar">👨‍🚒</span>
-          <span id="currentUserName" style="font-weight: 700; color: #f8fafc;">謝易庭</span>
-          <span id="currentMemberRoleBadge" class="role-badge-sm">⭐ EMT-1</span>
+          <span id="currentUserName" style="font-weight: 700; color: #f8fafc;">未登入</span>
+          <span id="currentMemberRoleBadge" class="role-badge-sm">⭐ 隊員</span>
         </div>
         
         <button id="btnOpenChangePassword" type="button" class="btn-sm-action" title="變更個人登入密碼">
@@ -64,7 +64,7 @@
         </button>
       </div>
 
-      <div id="unauthenticatedWrapper" style="display: none;">
+      <div id="unauthenticatedWrapper" style="display: flex; align-items: center;">
         <button id="btnOpenLoginModal" type="button" class="btn-primary" style="padding: 0.45rem 1rem; font-size: 0.85rem;">
           <span>🔐 隊員登入</span>
         </button>
@@ -1882,6 +1882,6 @@
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- 主邏輯 JS (附防快取版本) -->
-  <script type="module" src="app.js?v=20261008_v18"></script>
+  <script type="module" src="app.js?v=20261008_v19"></script>
 </body>
 </html>
