@@ -1,4 +1,4 @@
-import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS, SQUAD_CONFIG } from './data.js?v=20261008_v17';
+import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS, SQUAD_CONFIG } from './data.js?v=20261008_v18';
 
 // ==========================================
 // 1. 資料持久化管理 (LocalStorage)
@@ -3342,7 +3342,8 @@ function setupModals() {
     mem.makeupTrainingStatus = document.getElementById('adminMemberMakeupStatus').value;
 
     Store.set('members', members);
-    initMemberSelector();
+    setupAuthSystem();
+  initMemberSelector();
     document.getElementById('modalAdminEditMember')?.classList.remove('open');
     updateAllViews();
     showToast(`已成功覆寫更新隊員【${mem.name}】檔案資料與管制狀態！`, '👮‍♂️');

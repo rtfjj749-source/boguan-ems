@@ -22,7 +22,7 @@
   <!-- Supabase JS Client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
-  <link rel="stylesheet" href="styles.css?v=20261008_v17">
+  <link rel="stylesheet" href="styles.css?v=20261008_v18">
 </head>
 <body>
 
@@ -47,14 +47,33 @@
         <span>📱 切換視角</span>
       </button>
 
-      <!-- 當前模擬隊員切換 -->
-      <div class="member-select-wrapper">
-        <label for="memberSelect">目前登入：</label>
-        <select id="memberSelect" class="member-select"></select>
+      <!-- 登入身分與帳號狀態列 -->
+      <div id="userAuthBadgeWrapper" class="user-auth-badge">
+        <div id="currentUserPill" class="current-user-pill">
+          <span id="currentUserAvatar">👨‍🚒</span>
+          <span id="currentUserName" style="font-weight: 700; color: #f8fafc;">謝易庭</span>
+          <span id="currentMemberRoleBadge" class="role-badge-sm">⭐ EMT-1</span>
+        </div>
+        
+        <button id="btnOpenChangePassword" type="button" class="btn-sm-action" title="變更個人登入密碼">
+          <span>🔑 密碼</span>
+        </button>
+
+        <button id="btnLogout" type="button" class="btn-sm-action danger" title="登出系統">
+          <span>🚪 登出</span>
+        </button>
       </div>
 
-      <div class="role-badge" id="currentMemberRoleBadge">
-        <span>⭐ EMT-2</span>
+      <div id="unauthenticatedWrapper" style="display: none;">
+        <button id="btnOpenLoginModal" type="button" class="btn-primary" style="padding: 0.45rem 1rem; font-size: 0.85rem;">
+          <span>🔐 隊員登入</span>
+        </button>
+      </div>
+
+      <!-- 承辦人專屬：切換預覽下拉 (僅承辦人登入時可見) -->
+      <div id="adminSimulateWrapper" class="member-select-wrapper" style="display: none;">
+        <label for="memberSelect" style="color: #fbbf24;">👑 承辦切換視角：</label>
+        <select id="memberSelect" class="member-select"></select>
       </div>
     </div>
   </header>
@@ -814,6 +833,82 @@
           </table>
         </div>
       </div>
+    
+      <!-- ==================== 警消承辦人專屬：全隊密碼變更列管看板 ==================== -->
+      <div id="adminPasswordTrackingCard" class="glass-card" style="margin-top: 1.5rem; border-top: 3px solid #fbbf24; padding: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.25rem;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 0.6rem;">
+              <span style="font-size: 1.4rem;">🔑</span>
+              <h3 style="font-size: 1.2rem; font-weight: 800; color: #f8fafc;">全隊義消同仁登入密碼變更進度列管看板</h3>
+              <span style="font-size: 0.75rem; background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); padding: 1px 7px; border-radius: 99px; font-weight: 700;">
+                👮‍♂️ 警消承辦人管考專區
+              </span>
+            </div>
+            <p style="font-size: 0.82rem; color: var(--text-muted); margin-top: 0.25rem;">
+              即時掌握 54 位隊員首次登入與密碼修改狀況，隊員預設密碼皆為 1234。若隊員忘記密碼，承辦人可一鍵重設。
+            </p>
+          </div>
+
+          <div style="display: flex; gap: 0.6rem;">
+            <button id="btnExportPasswordExcel" type="button" class="btn-primary" style="background: linear-gradient(135deg, #10b981, #059669); border: none; font-size: 0.82rem; padding: 0.45rem 0.85rem;">
+              <span>📥 匯出密碼列管清冊 (Excel)</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 密碼變更 KPI 總覽 -->
+        <div class="grid-4" style="margin-bottom: 1.25rem;">
+          <div class="roster-stat-card">
+            <div class="roster-stat-label"><span>👥</span> 全隊義消總人數</div>
+            <div class="roster-stat-val" id="pwdStatTotal">54 <span style="font-size: 0.82rem; color: var(--text-muted);">人</span></div>
+            <div class="roster-stat-sub">官方編制同仁</div>
+          </div>
+          <div class="roster-stat-card" style="border-color: rgba(245,158,11,0.4);">
+            <div class="roster-stat-label"><span style="color: #fbbf24;">⚠️</span> 尚未變更密碼 (預設1234)</div>
+            <div class="roster-stat-val" id="pwdStatPending" style="color: #fbbf24;">54 <span style="font-size: 0.82rem; color: var(--text-muted);">人</span></div>
+            <div class="roster-stat-sub">需提醒同仁登入變更</div>
+          </div>
+          <div class="roster-stat-card" style="border-color: rgba(16,185,129,0.4);">
+            <div class="roster-stat-label"><span style="color: #34d399;">✅</span> 已完成密碼變更</div>
+            <div class="roster-stat-val" id="pwdStatChanged" style="color: #34d399;">0 <span style="font-size: 0.82rem; color: var(--text-muted);">人</span></div>
+            <div class="roster-stat-sub">帳號已受個人密碼保護</div>
+          </div>
+          <div class="roster-stat-card">
+            <div class="roster-stat-label"><span>📊</span> 全隊密碼安全率</div>
+            <div class="roster-stat-val" id="pwdStatRate" style="color: #38bdf8;">0%</div>
+            <div class="roster-stat-sub">個人密碼普及度</div>
+          </div>
+        </div>
+
+        <!-- 篩選列 -->
+        <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap;">
+          <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 700;">狀態篩選：</span>
+          <button type="button" class="roster-chip active" id="btnFilterPwdAll">全部同仁 (54)</button>
+          <button type="button" class="roster-chip" id="btnFilterPwdPending">⚠️ 尚未變更密碼</button>
+          <button type="button" class="roster-chip" id="btnFilterPwdDone">✅ 已完成密碼變更</button>
+        </div>
+
+        <!-- 密碼列管表格 -->
+        <div style="overflow-x: auto;">
+          <table class="styled-table" style="font-size: 0.85rem;">
+            <thead>
+              <tr>
+                <th style="width: 45px;">#</th>
+                <th>同仁姓名</th>
+                <th>所屬編制</th>
+                <th>隊部職務</th>
+                <th>登入帳號</th>
+                <th>目前密碼狀態</th>
+                <th>密碼變更時間</th>
+                <th style="text-align: center;">承辦人管理操作</th>
+              </tr>
+            </thead>
+            <tbody id="adminPasswordTableTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
     </section>
 
     <!-- ==================== TAB 5: 月底公文報表匯出 ==================== -->
@@ -1658,10 +1753,135 @@
     </div>
   </div>
 
+  
+  <!-- ==================== MODAL AUTH 1: 隊員登入 ==================== -->
+  <div id="modalLogin" class="modal-overlay">
+    <div class="modal-box" style="max-width: 440px;">
+      <div class="modal-title-row">
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <span style="font-size: 1.4rem;">🚑</span>
+          <h3 style="font-size: 1.15rem; font-weight: 800;">博館救護義消 - 身分驗證登入</h3>
+        </div>
+        <button type="button" class="btn-close-modal" data-close-modal="modalLogin">&times;</button>
+      </div>
+
+      <form id="formLogin">
+        <div class="form-group">
+          <label>帳號 (同仁中文姓名 / 承辦人代號)</label>
+          <input type="text" id="inputLoginUsername" class="form-input" placeholder="例如: 林立強、盧秋如、博館" required autofocus>
+        </div>
+
+        <div class="form-group">
+          <label>登入密碼</label>
+          <input type="password" id="inputLoginPassword" class="form-input" placeholder="隊員預設: 1234 / 承辦人: 0000" required>
+        </div>
+
+        <div style="background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.25); border-radius: 8px; padding: 0.75rem; margin-bottom: 1.25rem;">
+          <div style="font-size: 0.8rem; color: #38bdf8; font-weight: 700; margin-bottom: 0.2rem;">💡 帳號密碼預設說明</div>
+          <div style="font-size: 0.75rem; color: #cbd5e1; line-height: 1.5;">
+            • <strong>義消同仁</strong>：帳號為中文全名（如：盧秋如、林立強），預設密碼為 <strong>1234</strong>。<br>
+            • <strong>首次登入</strong>：系統將強制要求設定專屬新密碼以確保安全。<br>
+            • <strong>警消承辦人</strong>：帳號為 <strong>博館</strong>，密碼為 <strong>0000</strong>。
+          </div>
+          
+          <div class="login-quick-chips">
+            <span style="font-size: 0.72rem; color: var(--text-dim);">快速體驗填入：</span>
+            <button type="button" class="login-chip-btn" onclick="quickFillLogin('博館', '0000')">👮 承辦人</button>
+            <button type="button" class="login-chip-btn" onclick="quickFillLogin('林立強', '1234')">👨 林立強</button>
+            <button type="button" class="login-chip-btn" onclick="quickFillLogin('盧秋如', '1234')">👩 盧秋如</button>
+            <button type="button" class="login-chip-btn" onclick="quickFillLogin('謝易庭', '1234')">👨 謝易庭</button>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
+          <button type="button" class="btn-secondary" data-close-modal="modalLogin">取消</button>
+          <button type="submit" class="btn-primary" style="background: linear-gradient(135deg, #0284c7, #06b6d4); border: none; font-weight: 700;">
+            🔐 確認登入系統
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL AUTH 2: 首次登入強制變更密碼 ==================== -->
+  <div id="modalFirstChangePassword" class="modal-overlay" style="z-index: 1100;">
+    <div class="modal-box" style="max-width: 440px; border-color: rgba(245, 158, 11, 0.5); box-shadow: 0 0 30px rgba(245, 158, 11, 0.25);">
+      <div class="modal-title-row">
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <span style="font-size: 1.5rem;">🛡️</span>
+          <h3 style="font-size: 1.2rem; font-weight: 800; color: #fbbf24;">首次登入安全設定：請變更密碼</h3>
+        </div>
+      </div>
+
+      <form id="formFirstChangePassword">
+        <div style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); border-radius: 8px; padding: 0.85rem; margin-bottom: 1.25rem;">
+          <div style="font-size: 0.85rem; color: #fbbf24; font-weight: 700; margin-bottom: 0.25rem;">
+            👋 您好，<span id="firstLoginUserNameDisplay">隊員</span>！
+          </div>
+          <div style="font-size: 0.78rem; color: #e2e8f0; line-height: 1.6;">
+            您目前使用的是系統預設密碼 <strong>1234</strong>。<br>
+            為了防止他人冒用您的身分登記排班或誤植協勤打卡，請<strong>立即設定您的專屬新密碼</strong>（至少 4 碼，且不可再為 1234）。設定完成後即可進入系統！
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>設定您的新密碼 (至少4碼)</label>
+          <input type="password" id="inputNewPasswordFirst" class="form-input" placeholder="請輸入新密碼 (請勿再用 1234)" required minlength="4">
+        </div>
+
+        <div class="form-group">
+          <label>再次確認新密碼</label>
+          <input type="password" id="inputConfirmPasswordFirst" class="form-input" placeholder="請再次輸入新密碼" required minlength="4">
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; margin-top: 1.25rem;">
+          <button type="submit" class="btn-primary" style="width: 100%; background: linear-gradient(135deg, #f59e0b, #d97706); border: none; font-weight: 700; padding: 0.75rem;">
+            💾 儲存專屬新密碼並進入系統
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL AUTH 3: 自行變更密碼 ==================== -->
+  <div id="modalChangePassword" class="modal-overlay">
+    <div class="modal-box" style="max-width: 420px;">
+      <div class="modal-title-row">
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <span style="font-size: 1.3rem;">🔑</span>
+          <h3 style="font-size: 1.15rem; font-weight: 800;">變更個人登入密碼</h3>
+        </div>
+        <button type="button" class="btn-close-modal" data-close-modal="modalChangePassword">&times;</button>
+      </div>
+
+      <form id="formChangePassword">
+        <div class="form-group">
+          <label>目前舊密碼</label>
+          <input type="password" id="inputOldPassword" class="form-input" required placeholder="請輸入目前密碼">
+        </div>
+
+        <div class="form-group">
+          <label>設定新密碼</label>
+          <input type="password" id="inputNewPasswordUser" class="form-input" required minlength="4" placeholder="請輸入至少4位數新密碼">
+        </div>
+
+        <div class="form-group">
+          <label>再次確認新密碼</label>
+          <input type="password" id="inputConfirmPasswordUser" class="form-input" required minlength="4" placeholder="請再次輸入新密碼">
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.25rem;">
+          <button type="button" class="btn-secondary" data-close-modal="modalChangePassword">取消</button>
+          <button type="submit" class="btn-primary">確認變更密碼</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Toast 通知容器 -->
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- 主邏輯 JS (附防快取版本) -->
-  <script type="module" src="app.js?v=20261008_v17"></script>
+  <script type="module" src="app.js?v=20261008_v18"></script>
 </body>
 </html>

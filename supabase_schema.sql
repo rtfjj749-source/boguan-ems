@@ -80,16 +80,32 @@ CREATE TABLE IF NOT EXISTS public.dispatch_records (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. 開啟 Row Level Security (RLS) 並給予公開讀寫權限 (利於全隊即時協作)
+-- 5. 義消同仁使用者帳號與密碼安全管理 (User Accounts)
+CREATE TABLE IF NOT EXISTS public.user_accounts (
+    id TEXT PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    member_id TEXT REFERENCES public.members(id) ON DELETE CASCADE,
+    name VARCHAR(50) NOT NULL,
+    password_hash TEXT NOT NULL,
+    has_changed_password BOOLEAN DEFAULT FALSE,
+    password_changed_at TIMESTAMPTZ,
+    last_login_at TIMESTAMPTZ,
+    is_admin BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 6. 開啟 Row Level Security (RLS) 並給予公開讀寫權限 (利於全隊即時協作)
 ALTER TABLE public.members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.shifts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.attendance ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.dispatch_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_accounts ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow public read-write for members" ON public.members FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public read-write for shifts" ON public.shifts FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public read-write for attendance" ON public.attendance FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public read-write for dispatch_records" ON public.dispatch_records FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public read-write for user_accounts" ON public.user_accounts FOR ALL USING (true) WITH CHECK (true);
 
 -- 6. 開啟 Supabase Realtime 即時廣播 (只要有人登記/取消排班，全隊即刻更新)
 ALTER PUBLICATION supabase_realtime ADD TABLE public.shifts;
