@@ -1,4 +1,4 @@
-import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS } from './data.js?v=20261007_v6';
+import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS } from './data.js?v=20261008_v13';
 
 // ==========================================
 // 1. 資料持久化管理 (LocalStorage)
@@ -54,13 +54,15 @@ let attendance = Store.get('attendance', INITIAL_ATTENDANCE).map(a => {
 });
 Store.set('attendance', attendance);
 let dispatches = Store.get('dispatches', INITIAL_DISPATCHES);
-let shifts = Store.get('shifts', INITIAL_SHIFTS).map(s => {
-  let v = s.vehicle;
-  if (!v || v === '博館91' || v === '博館92' || v.includes('91') || v.includes('92')) {
-    v = '救護協勤';
-  }
-  return { ...s, vehicle: v };
-});
+let shifts = Store.get('shifts', INITIAL_SHIFTS)
+  .filter(s => s.memberName && s.status !== '缺協勤') // 自動清理取消後遺留的空缺或缺協勤班次（不留缺額警示）
+  .map(s => {
+    let v = s.vehicle;
+    if (!v || v === '博館91' || v === '博館92' || v.includes('91') || v.includes('92')) {
+      v = '救護協勤';
+    }
+    return { ...s, vehicle: v };
+  });
 Store.set('shifts', shifts);
 let currentMemberId = Store.get('currentMemberId', 'm1');
 let activeDuty = Store.get('activeDuty', null); // { memberId, startTime: timestamp, dateStr }
@@ -125,26 +127,30 @@ async function syncFromSupabase() {
   try {
     const { data: remoteShifts, error: sErr } = await supabaseClient.from('shifts').select('*');
     if (!sErr && remoteShifts && remoteShifts.length > 0) {
-      shifts = remoteShifts.map(s => {
-        let v = s.vehicle;
-        if (!v || v === '博館91' || v === '博館92' || v.includes('91') || v.includes('92')) {
-          v = '救護協勤';
-        }
-        return {
-          id: s.id,
-          date: s.shift_date,
-          day: s.day_num,
-          dayOfWeek: s.day_of_week,
-          vehicle: v,
-          period: s.period,
-          memberName: s.member_name || '',
-          shiftType: s.shift_type,
-          status: s.status,
-          isMakeupTraining: !!s.is_makeup_training
-        };
-      });
+      shifts = remoteShifts
+        .filter(s => s.member_name && s.status !== '缺協勤')
+        .map(s => {
+          let v = s.vehicle;
+          if (!v || v === '博館91' || v === '博館92' || v.includes('91') || v.includes('92')) {
+            v = '救護協勤';
+          }
+          return {
+            id: s.id,
+            date: s.shift_date,
+            day: s.day_num,
+            dayOfWeek: s.day_of_week,
+            vehicle: v,
+            period: s.period,
+            memberName: s.member_name || '',
+            shiftType: s.shift_type,
+            status: s.status,
+            isMakeupTraining: !!s.is_makeup_training
+          };
+        });
       Store.set('shifts', shifts);
       renderSchedule();
+      // 同步清理雲端多餘的缺協勤/空紀錄
+      supabaseClient.from('shifts').delete().or('status.eq.缺協勤,member_name.eq.""').then(() => {});
     }
   } catch (err) {
     console.warn('Sync from Supabase shifts failed:', err);
@@ -183,6 +189,13 @@ function pushShiftToSupabase(shift) {
     is_makeup_training: !!shift.isMakeupTraining
   }).then(({ error }) => {
     if (error) console.warn('Supabase shift upsert error:', error);
+  });
+}
+
+function deleteShiftFromSupabase(shiftId) {
+  if (!supabaseClient || !shiftId) return;
+  supabaseClient.from('shifts').delete().eq('id', shiftId).then(({ error }) => {
+    if (error) console.warn('Supabase shift delete error:', error);
   });
 }
 
@@ -725,15 +738,14 @@ function renderVisualCalendar() {
     const isToday = (calCurrentYear === 115 && calCurrentMonth === 10 && d === 7); // 展示基準日
     const isNationalDay = (calCurrentMonth === 10 && d === 10);
 
-    // 取得當天所有班次
-    let dayShifts = shifts.filter(s => s.date === dateKey || (calCurrentMonth === 10 && s.day === d && !s.date?.includes('-')));
+    // 取得當天所有班次（僅納入實際預約同仁，不留缺額警示）
+    let dayShifts = shifts.filter(s => s.memberName && s.status !== '缺協勤' && (s.date === dateKey || (calCurrentMonth === 10 && s.day === d && !s.date?.includes('-'))));
 
     // 統計全月數據 (未過濾前)
     dayShifts.forEach(s => {
       statTotal++;
       if (s.vehicle.includes('值班')) statDesk++;
       else statEms++;
-      if (!s.memberName || s.status === '缺協勤') statVacant++;
     });
 
     // 依篩選條件過濾顯示
@@ -747,11 +759,7 @@ function renderVisualCalendar() {
         visibleShifts = visibleShifts.filter(s => s.vehicle === filterVehicle);
       }
     }
-    if (calFilterVacantOnly) {
-      visibleShifts = visibleShifts.filter(s => !s.memberName || s.status === '缺協勤');
-    }
 
-    const hasVacant = dayShifts.some(s => !s.memberName || s.status === '缺協勤');
     const hasMyShift = highlightMe && dayShifts.some(s => s.memberName === curUser.name);
 
     const cell = document.createElement('div');
@@ -766,23 +774,18 @@ function renderVisualCalendar() {
       badgeHtml += `<span class="cal-special-tag" style="background: rgba(16,185,129,0.2); color: #34d399; border-color: rgba(16,185,129,0.4);">🟢 今日</span>`;
     }
 
-    if (hasVacant) {
-      badgeHtml += `<span class="cal-vacant-indicator">⚠️ 缺額</span>`;
-    }
-
-    // 班次晶片區 (最多直接展示 3 條，其餘 +N)
+    // 班次晶片區 (最多直接展示 3 條，其餘 +N，不留缺額警示)
     let chipsHtml = '';
     const maxChips = 3;
     visibleShifts.slice(0, maxChips).forEach(s => {
-      const isVac = !s.memberName || s.status === '缺協勤';
       const isMine = s.memberName === curUser.name;
       const isDesk = s.vehicle.includes('值班');
-      const chipClass = isVac ? 'chip-vacant' : (isDesk ? 'chip-desk' : 'chip-ems');
+      const chipClass = isDesk ? 'chip-desk' : 'chip-ems';
       const vLabel = isDesk ? (s.vehicle.includes('補定訓') ? '補定訓' : '值班') : '救護待命';
-      const text = isVac ? `⚠️ 缺 ${vLabel} ${s.period}` : `${vLabel} ${s.memberName} ${s.period}`;
+      const text = `${vLabel} ${s.memberName} ${s.period}`;
       
       chipsHtml += `
-        <div class="cal-shift-chip ${chipClass} ${isMine ? 'is-mine' : ''}" title="${vLabel} ${s.period} ${s.memberName || '缺協勤'}">
+        <div class="cal-shift-chip ${chipClass} ${isMine ? 'is-mine' : ''}" title="${vLabel} ${s.period} ${s.memberName}">
           ${text}
         </div>
       `;
@@ -1128,10 +1131,11 @@ function openEmergencyCancelModal(shiftId) {
   modal.classList.add('open');
 }
 
-// 執行突發狀況取消排班 (釋出席位並記錄動態)
+// 執行突發狀況取消排班 (直接取消移除班次，不留下缺額警示)
 function executeEmergencyCancel(shiftId, reasonCategory, reasonNote) {
-  const shift = shifts.find(s => s.id === shiftId);
-  if (!shift) return;
+  const shiftIndex = shifts.findIndex(s => s.id === shiftId);
+  if (shiftIndex === -1) return;
+  const shift = shifts[shiftIndex];
   const prevMember = shift.memberName;
 
   const isMakeup = (shift.vehicle && shift.vehicle.includes('補定訓')) || (shift.shiftType && shift.shiftType.includes('補定訓'));
@@ -1143,7 +1147,7 @@ function executeEmergencyCancel(shiftId, reasonCategory, reasonNote) {
     }
   }
 
-  // 寫入突發狀況取消記錄
+  // 寫入突發狀況取消記錄 (供紀錄備查)
   const newLog = {
     id: `can-${Date.now()}`,
     shiftId: shift.id,
@@ -1158,15 +1162,14 @@ function executeEmergencyCancel(shiftId, reasonCategory, reasonNote) {
   if (cancellationLogs.length > 20) cancellationLogs.pop();
   Store.set('cancellation_logs', cancellationLogs);
 
-  // 釋出名額
-  shift.memberName = '';
-  shift.status = '缺協勤';
+  // 直接取消移除預約班次，不留下缺額警示
+  const cancelledId = shift.id;
+  shifts.splice(shiftIndex, 1);
   Store.set('shifts', shifts);
-  pushShiftToSupabase(shift);
+  deleteShiftFromSupabase(cancelledId);
 
   document.getElementById('modalCancelShift')?.classList.remove('open');
   updateAllViews();
-  renderReleasedFeed();
 
   // 若當日詳細視窗開啟中，重新載入
   const modalDay = document.getElementById('modalDayDetail');
@@ -1175,7 +1178,7 @@ function executeEmergencyCancel(shiftId, reasonCategory, reasonNote) {
     openDayDetailModal(day);
   }
 
-  showToast(`已成功取消預定！因突發狀況釋出之名額已於雲端開放供全隊同仁先填先站位遞補。`, '🚨');
+  showToast(`已成功取消 ${prevMember} 的預定班次！`, '✅');
   playFeedbackSound('success');
 }
 
@@ -1432,11 +1435,13 @@ function renderOfficerAuditPanel() {
       let deletedCount = 0;
       if (myFuture.length > 3) {
         const excess = myFuture.slice(3);
+        const excessIds = new Set(excess.map(s => s.id));
         excess.forEach(s => {
-          s.memberName = '';
-          s.status = '缺協勤';
           deletedCount++;
+          deleteShiftFromSupabase(s.id);
         });
+        shifts = shifts.filter(s => !excessIds.has(s.id));
+        Store.set('shifts', shifts);
       }
 
       // 設定管制
@@ -1823,9 +1828,8 @@ function renderScheduleListView() {
       list = list.filter(s => s.vehicle === filterVehicle);
     }
   }
-  if (calFilterVacantOnly) {
-    list = list.filter(s => !s.memberName || s.status === '缺協勤');
-  }
+  // 僅呈現實際登記同仁（不留缺額警示）
+  list = list.filter(s => s.memberName && s.status !== '缺協勤');
 
   if (list.length === 0) {
     tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 2rem;">民國 ${calCurrentYear} 年 ${calCurrentMonth} 月尚無排班紀錄，可隨時點擊「➕ 登記協勤時段」新增！</td></tr>`;
@@ -1834,16 +1838,13 @@ function renderScheduleListView() {
 
   list.forEach(s => {
     const tr = document.createElement('tr');
-    const isVacant = !s.memberName || s.status === '缺協勤';
     const isMine = s.memberName === curUser.name;
     const isDesk = s.vehicle.includes('值班');
     const vClass = isDesk ? 'v-desk' : 'v-ems';
     const vDisplay = isDesk ? s.vehicle : '🚑 救護協勤 (隊上待命)';
     
     let actionBtnHtml = '';
-    if (isVacant) {
-      actionBtnHtml = `<button class="btn-claim-shift" data-shift-id="${s.id}">認領此班</button>`;
-    } else if (isMine || isOfficer) {
+    if (isMine || isOfficer) {
       actionBtnHtml = `
         <button class="btn-secondary btn-cancel-shift" data-shift-id="${s.id}" style="font-size: 0.72rem; padding: 2px 8px; color: #f87171; border-color: rgba(239,68,68,0.4);">
           ❌ 取消預約
