@@ -2627,3 +2627,50 @@ body {
   border-color: #38bdf8;
   color: #38bdf8;
 }
+
+/* ==============================================================================
+   出勤義消同仁多選標籤樣式 (Multi-Member Chip Tag Selector)
+   ============================================================================== */
+
+.selected-member-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(56, 189, 248, 0.16);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  color: #f8fafc;
+  padding: 0.35rem 0.75rem;
+  border-radius: 99px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.18);
+  transition: var(--transition);
+}
+
+.selected-member-chip:hover {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.28);
+}
+
+.btn-remove-chip {
+  background: rgba(239, 68, 68, 0.25);
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  color: #fca5a5;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  margin-left: 3px;
+  transition: var(--transition);
+}
+
+.btn-remove-chip:hover {
+  background: #ef4444;
+  color: #ffffff;
+}

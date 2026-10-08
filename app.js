@@ -1,4 +1,4 @@
-import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS, SQUAD_CONFIG } from './data.js?v=20261008_v22';
+import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS, SQUAD_CONFIG } from './data.js?v=20261008_v23';
 
 // ==========================================
 // 1. 資料持久化管理 (LocalStorage)
@@ -613,7 +613,7 @@ function renderDispatchList() {
       <div class="dispatch-meta">
         <div class="dispatch-meta-item">📍 <strong>地點：</strong> ${d.location}</div>
         <div class="dispatch-meta-item">🏥 <strong>送往：</strong> ${d.hospital || '無'}</div>
-        <div class="dispatch-meta-item">👨‍🚒 <strong>出勤義消：</strong> <span style="color: #38bdf8; font-weight: 700;">${d.memberNames.join('、')}</span></div>
+        <div class="dispatch-meta-item">👨‍🚒 <strong>出勤義消：</strong> <span style="color: #38bdf8; font-weight: 700;">${d.memberNames.join('、')}${d.memberNames.length > 1 ? ` (共${d.memberNames.length}人)` : ''}</span></div>
       </div>
 
       ${d.chiefComplaint ? `<div style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.25rem;">📝 <strong>傷病主訴：</strong>${d.chiefComplaint}</div>` : ''}
@@ -2848,9 +2848,10 @@ function openEditDispatchModal(id) {
   document.getElementById('inputDepartureTime').value = d.departureTime || '20:00';
   document.getElementById('inputReturnTime').value = d.returnTime || '21:10';
   document.getElementById('inputLocation').value = d.location || '';
-  if (d.memberNames && d.memberNames[0]) {
-    document.getElementById('inputDispatchMember').value = d.memberNames[0];
-  }
+  currentDispatchSelectedMembers = (d.memberNames || []).map(name => members.find(m => m.name === name)).filter(Boolean);
+  initDispatchMemberSelect();
+  renderDispatchMemberChips();
+  renderDispatchQuickMemberChips();
   document.getElementById('inputResultType').value = d.resultType || '送醫';
   document.getElementById('inputHospital').value = d.hospital || '中國醫藥大學附設醫院';
   document.getElementById('inputComplaint').value = d.chiefComplaint || '';
@@ -2886,7 +2887,14 @@ function setupModals() {
     const title = modalDispatch.querySelector('h3');
     if (title) title.textContent = '🚑 登記救護出勤紀錄';
     document.getElementById('inputCaseNo').value = `1151007-${String(dispatches.length + 1).padStart(2, '0')}`;
-    document.getElementById('inputDispatchMember').value = getCurrentMember().name;
+    currentDispatchSelectedMembers = [];
+    const cur = getCurrentMember();
+    if (cur && cur.name !== '未登入' && cur.id !== 'm0') {
+      currentDispatchSelectedMembers.push(cur);
+    }
+    initDispatchMemberSelect();
+    renderDispatchMemberChips();
+    renderDispatchQuickMemberChips();
     modalDispatch.classList.add('open');
   }
 
@@ -3192,7 +3200,13 @@ function setupModals() {
     const departureTime = document.getElementById('inputDepartureTime').value;
     const returnTime = document.getElementById('inputReturnTime').value;
     const location = document.getElementById('inputLocation').value;
-    const memberName = document.getElementById('inputDispatchMember').value;
+    if (currentDispatchSelectedMembers.length === 0) {
+      showToast('請至少選擇一位出勤義消同仁！', '⚠️');
+      playFeedbackSound('alert');
+      return;
+    }
+    const memberNames = currentDispatchSelectedMembers.map(m => m.name);
+    const memberIds = currentDispatchSelectedMembers.map(m => m.id);
     const resultType = document.getElementById('inputResultType').value;
     const hospital = document.getElementById('inputHospital').value;
     const chiefComplaint = document.getElementById('inputComplaint').value;
@@ -3217,7 +3231,8 @@ function setupModals() {
           departureTime,
           returnTime,
           location,
-          memberNames: [memberName],
+          memberNames,
+          memberIds,
           resultType,
           patientCount: isIdle ? 0 : 1,
           isIdle,
@@ -3247,8 +3262,8 @@ function setupModals() {
       departureTime,
       returnTime,
       location,
-      memberIds: [currentMemberId],
-      memberNames: [memberName],
+      memberIds,
+      memberNames,
       resultType,
       patientCount: isIdle ? 0 : 1,
       isIdle,
@@ -3262,20 +3277,22 @@ function setupModals() {
     dispatches.unshift(newDisp);
     Store.set('dispatches', dispatches);
 
-    // 同步升級志工數據 (供徽章判讀)
-    const mem = members.find(m => m.name === memberName);
-    if (mem) {
-      mem.totalDispatches = (Number(mem.totalDispatches) || 0) + 1;
-      if (isRosc) mem.roscCount = (Number(mem.roscCount) || 0) + 1;
-      if (treatments.includes('12導程心電圖')) mem.ecgCount = (Number(mem.ecgCount) || 0) + 1;
-      if (treatments.includes('靜脈注射')) mem.ivCount = (Number(mem.ivCount) || 0) + 1;
-      Store.set('members', members);
-    }
+    // 同步升級所有出勤同仁數據 (1~3位全員同步累加榮譽履歷)
+    currentDispatchSelectedMembers.forEach(targetMem => {
+      const mem = members.find(m => m.name === targetMem.name || m.id === targetMem.id);
+      if (mem) {
+        mem.totalDispatches = (Number(mem.totalDispatches) || 0) + 1;
+        if (isRosc) mem.roscCount = (Number(mem.roscCount) || 0) + 1;
+        if (treatments.includes('12導程心電圖')) mem.ecgCount = (Number(mem.ecgCount) || 0) + 1;
+        if (treatments.includes('靜脈注射')) mem.ivCount = (Number(mem.ivCount) || 0) + 1;
+      }
+    });
+    Store.set('members', members);
 
     modalDispatch.classList.remove('open');
     updateAllViews();
     playFeedbackSound('success');
-    showToast(`救護出勤案號 ${caseNo} 登記完成！榮譽履歷已連動`, '🚑');
+    showToast(`救護出勤案號 ${caseNo} 登記完成！已同步認列【${memberNames.join('、')}】共 ${memberNames.length} 位同仁之救護履歷！`, '🚑');
   });
 
   // 表單 2: 自排班登記 (嚴格套用所有排班法規驗證，警消可指定任何隊員)
