@@ -22,7 +22,7 @@
   <!-- Supabase JS Client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
-  <link rel="stylesheet" href="styles.css?v=20261008_v21">
+  <link rel="stylesheet" href="styles.css?v=20261008_v22">
 </head>
 <body>
 
@@ -146,26 +146,36 @@
           <div id="clockLive" class="clock-live">當前時間：2026-10-07 11:15:00</div>
 
           <div class="punch-actions">
-            <button id="btnPunchIn" class="btn-punch btn-punch-in">
-              <span>📍 一鍵到隊簽到</span>
-            </button>
-            <button id="btnPunchOut" class="btn-punch btn-punch-out" disabled>
-              <span>🏁 簽退離開</span>
-            </button>
+            <!-- 簽到操作區塊 -->
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 0.45rem;">
+              <button id="btnPunchIn" class="btn-punch btn-punch-in" style="width: 100%;">
+                <span>📍 一鍵到隊簽到</span>
+              </button>
+              <div id="boxBackfillInTrigger" style="text-align: center;">
+                <button id="btnOpenBackfillIn" type="button" style="background: none; border: none; color: #38bdf8; font-size: 0.8rem; cursor: pointer; text-decoration: underline; display: inline-flex; align-items: center; gap: 0.25rem;">
+                  <span>🕒 補登到隊時間</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 簽退操作區塊 (包含一鍵簽退與返家自訂離隊時間簽退) -->
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 0.45rem;">
+              <button id="btnPunchOut" class="btn-punch btn-punch-out" disabled style="width: 100%;">
+                <span>🏁 一鍵簽退離開</span>
+              </button>
+              <div id="boxAdjustOutTrigger" style="text-align: center;">
+                <button id="btnOpenAdjustOut" type="button" style="background: none; border: none; color: #fbbf24; font-size: 0.8rem; cursor: pointer; text-decoration: underline; display: inline-flex; align-items: center; gap: 0.25rem;" title="避免返家後才想起忘記簽退，可自行輸入實際離開時間">
+                  <span>🕒 自訂離隊時間簽退 (避免返家忘記)</span>
+                </button>
+              </div>
+            </div>
           </div>
 
-          <!-- 補登與校正入口 (限當日6小時內) -->
-          <div style="margin-top: 0.85rem; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 0.4rem;">
-            <div id="boxBackfillInTrigger">
-              <button id="btnOpenBackfillIn" type="button" style="background: none; border: none; color: #38bdf8; font-size: 0.82rem; cursor: pointer; text-decoration: underline; display: inline-flex; align-items: center; gap: 0.35rem;">
-                <span>🕒 剛才忘了打卡？補登到隊時間 (限當日6小時內)</span>
-              </button>
-            </div>
-            <div id="boxAdjustOutTrigger" style="display: none;">
-              <button id="btnOpenAdjustOut" type="button" style="background: none; border: none; color: #fbbf24; font-size: 0.82rem; cursor: pointer; text-decoration: underline; display: inline-flex; align-items: center; gap: 0.35rem;">
-                <span>🕒 稍早已離隊？校正離隊時間 (限當日6小時內)</span>
-              </button>
-            </div>
+          <!-- 返家忘記打卡補登入口 -->
+          <div style="margin-top: 0.75rem; width: 100%; display: flex; justify-content: center;">
+            <button id="btnOpenCompleteBackfill" type="button" style="background: rgba(255, 255, 255, 0.05); border: 1px dashed rgba(56, 189, 248, 0.4); padding: 0.35rem 0.85rem; border-radius: 99px; color: #cbd5e1; font-size: 0.78rem; cursor: pointer; display: inline-flex; align-items: center; gap: 0.35rem; transition: var(--transition);">
+              <span>🏠 返家才想起忘記打卡？補登今日完整協勤紀錄</span>
+            </button>
           </div>
 
           <div style="margin-top: 1.15rem; font-size: 0.78rem; color: var(--text-dim); display: flex; align-items: center; justify-content: center; gap: 0.5rem; text-align: center; flex-wrap: wrap;">
@@ -1438,43 +1448,43 @@
     </div>
   </div>
 
-  <!-- ==================== MODAL 6: 校正離隊簽退時間 (限當日6小時內) ==================== -->
+  <!-- ==================== MODAL 6: 自訂離隊時間簽退 (避免返家忘記簽退) ==================== -->
   <div id="modalAdjustOut" class="modal-overlay">
     <div class="modal-box" style="max-width: 520px;">
       <div class="modal-title-row">
         <div>
-          <h3 style="font-size: 1.25rem; font-weight: 700;">🏁 校正實際離隊時間並簽退</h3>
-          <p style="font-size: 0.8rem; color: var(--text-muted);">稍早已離開分隊？請輸入真實離隊時間進行結算</p>
+          <h3 style="font-size: 1.25rem; font-weight: 700;">🏁 自訂離隊時間簽退</h3>
+          <p style="font-size: 0.8rem; color: var(--text-muted);">返家後才想起忘記簽退？請輸入您實際離開分隊時間進行結算</p>
         </div>
         <button class="btn-close-modal" data-close-modal="modalAdjustOut">&times;</button>
       </div>
 
-      <!-- 6小時校正限制警示卡 -->
-      <div style="background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: var(--radius-sm); padding: 0.75rem 1rem; margin-bottom: 1.25rem; font-size: 0.82rem; color: #fde68a; line-height: 1.6;">
-        ⚠️ <strong>離隊校正規範：</strong><br>
-        離隊時間不可早於簽到時間，且最多僅限往回校正 <strong>6 小時內</strong>。<br>
-        系統將精準依實際在隊時間換算協勤時數與誤餐費資格。
+      <!-- 貼心說明卡片 -->
+      <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: var(--radius-sm); padding: 0.75rem 1rem; margin-bottom: 1.25rem; font-size: 0.82rem; color: #fde68a; line-height: 1.6;">
+        💡 <strong>離隊時間簽退說明：</strong><br>
+        若您已協勤完畢並返家，請在下方填寫您<strong>今日實際離開分隊之時間</strong>。<br>
+        系統將忠實記錄您在隊的時間長度，並自動核算協勤時數與誤餐費資格。
       </div>
 
       <form id="formAdjustOut">
         <div class="grid-2">
           <div class="form-group">
-            <label>本日簽到時間</label>
+            <label>本日到隊簽到時間</label>
             <input type="text" id="inputAdjustOutSignInTime" class="form-input" readonly>
           </div>
           <div class="form-group">
-            <label>實際離隊時間 <span style="color: #ef4444;">*</span></label>
+            <label>實際離開分隊時間 <span style="color: #ef4444;">*</span></label>
             <input type="time" id="inputAdjustOutTime" class="form-input" required>
             <span id="adjustOutTimeLimitHint" style="font-size: 0.72rem; color: #fbbf24; margin-top: 4px; display: block;"></span>
           </div>
         </div>
 
         <div class="form-group">
-          <label>快捷校正原因</label>
+          <label>簽退備註事由</label>
           <div class="checkbox-chips">
-            <label class="chip-checkbox"><input type="radio" name="adjustOutReason" value="離開時忘記按簽退" checked><span>📱 離開時忘記按簽退</span></label>
+            <label class="chip-checkbox"><input type="radio" name="adjustOutReason" value="返家後才想起忘記簽退" checked><span>🏠 返家後才想起忘記簽退</span></label>
             <label class="chip-checkbox"><input type="radio" name="adjustOutReason" value="救護出勤延後退勤"><span>🚑 救護出勤延後退勤</span></label>
-            <label class="chip-checkbox"><input type="radio" name="adjustOutReason" value="緊急公務返家處理"><span>🏃 緊急公務返家處理</span></label>
+            <label class="chip-checkbox"><input type="radio" name="adjustOutReason" value="緊急公務公差離隊"><span>🏃 緊急公務公差離隊</span></label>
           </div>
         </div>
 
@@ -1492,7 +1502,76 @@
 
         <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
           <button type="button" class="btn-secondary" data-close-modal="modalAdjustOut">取消</button>
-          <button type="submit" class="btn-primary">確認校正並簽退</button>
+          <button type="submit" class="btn-primary" style="background: linear-gradient(135deg, #f59e0b, #d97706); border: none; font-weight: 700;">
+            🏁 確認離隊時間並結算存檔
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL 8: 返家補登今日完整協勤紀錄 ==================== -->
+  <div id="modalCompleteBackfill" class="modal-overlay">
+    <div class="modal-box" style="max-width: 520px;">
+      <div class="modal-title-row">
+        <div>
+          <h3 style="font-size: 1.25rem; font-weight: 700;">🏠 返家補登今日協勤紀錄</h3>
+          <p style="font-size: 0.8rem; color: var(--text-muted);">忘記打卡簽到退？請填寫今日實際到隊與離隊時段</p>
+        </div>
+        <button class="btn-close-modal" data-close-modal="modalCompleteBackfill">&times;</button>
+      </div>
+
+      <div style="background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: var(--radius-sm); padding: 0.75rem 1rem; margin-bottom: 1.25rem; font-size: 0.82rem; color: #bae6fd; line-height: 1.6;">
+        💡 <strong>協勤時段補填說明：</strong><br>
+        若您今日曾到博館分隊協勤，但中途完全忘記打卡簽到與簽退，請於此處直接補齊到隊與離隊時間。<br>
+        系統將為您直接建檔並計算時數。
+      </div>
+
+      <form id="formCompleteBackfill">
+        <div class="grid-2">
+          <div class="form-group">
+            <label>協勤同仁姓名</label>
+            <input type="text" id="inputCompBackfillMemberName" class="form-input" readonly>
+          </div>
+          <div class="form-group">
+            <label>協勤日期</label>
+            <input type="text" id="inputCompBackfillDate" class="form-input" readonly>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="form-group">
+            <label>實際到隊時間 <span style="color: #ef4444;">*</span></label>
+            <input type="time" id="inputCompBackfillInTime" class="form-input" required value="18:00">
+          </div>
+          <div class="form-group">
+            <label>實際離隊時間 <span style="color: #ef4444;">*</span></label>
+            <input type="time" id="inputCompBackfillOutTime" class="form-input" required value="22:00">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>補登事由</label>
+          <input type="text" id="inputCompBackfillReason" class="form-input" value="返家後才想起忘記打卡簽到退">
+        </div>
+
+        <!-- 試算結果預覽 -->
+        <div style="background: rgba(30, 41, 59, 0.7); border-radius: 8px; padding: 0.85rem 1rem; margin-bottom: 1.25rem; border: 1px solid var(--border-subtle);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+            <span style="font-size: 0.82rem; color: var(--text-muted);">換算實際在隊時數：</span>
+            <strong id="previewCompHours" style="color: #38bdf8; font-size: 1.1rem;">4.0 hr</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 0.82rem; color: var(--text-muted);">誤餐費判定 (滿4小時)：</span>
+            <span id="previewCompMeal" style="font-weight: 700; font-size: 0.85rem; color: #34d399;">✅ 符合誤餐費資格 ($100)</span>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
+          <button type="button" class="btn-secondary" data-close-modal="modalCompleteBackfill">取消</button>
+          <button type="submit" class="btn-primary" style="background: linear-gradient(135deg, #0284c7, #06b6d4); border: none; font-weight: 700;">
+            💾 儲存並補入協勤紀錄
+          </button>
         </div>
       </form>
     </div>
@@ -1840,6 +1919,6 @@
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- 主邏輯 JS (附防快取版本) -->
-  <script type="module" src="app.js?v=20261008_v21"></script>
+  <script type="module" src="app.js?v=20261008_v22"></script>
 </body>
 </html>
