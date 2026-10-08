@@ -54,6 +54,11 @@ let attendance = Store.get('attendance', INITIAL_ATTENDANCE).map(a => {
 });
 Store.set('attendance', attendance);
 let dispatches = Store.get('dispatches', INITIAL_DISPATCHES);
+// 清空預定排班以利乾淨測試 (清除舊版 localStorage 快取)
+if (!Store.get('shifts_cleared_for_testing_v3')) {
+  Store.set('shifts', []);
+  Store.set('shifts_cleared_for_testing_v3', true);
+}
 let shifts = Store.get('shifts', INITIAL_SHIFTS)
   .filter(s => s.memberName && s.status !== '缺協勤') // 自動清理取消後遺留的空缺或缺協勤班次（不留缺額警示）
   .map(s => {
@@ -126,7 +131,7 @@ async function syncFromSupabase() {
   if (!supabaseClient) return;
   try {
     const { data: remoteShifts, error: sErr } = await supabaseClient.from('shifts').select('*');
-    if (!sErr && remoteShifts && remoteShifts.length > 0) {
+    if (!sErr && remoteShifts) {
       shifts = remoteShifts
         .filter(s => s.member_name && s.status !== '缺協勤')
         .map(s => {
@@ -150,7 +155,9 @@ async function syncFromSupabase() {
       Store.set('shifts', shifts);
       renderSchedule();
       // 同步清理雲端多餘的缺協勤/空紀錄
-      supabaseClient.from('shifts').delete().or('status.eq.缺協勤,member_name.eq.""').then(() => {});
+      if (remoteShifts.length > 0) {
+        supabaseClient.from('shifts').delete().or('status.eq.缺協勤,member_name.eq.""').then(() => {});
+      }
     }
   } catch (err) {
     console.warn('Sync from Supabase shifts failed:', err);
@@ -1951,6 +1958,23 @@ function setupCalendarControls() {
     renderVisualCalendar();
     renderScheduleListView();
     showToast(calFilterVacantOnly ? '已過濾：僅顯示尚有缺協勤之班次' : '已重設：顯示全月所有班次', '🔍');
+  });
+
+  // 一鍵清空排班（測試專用）
+  document.getElementById('btnClearAllShiftsTest')?.addEventListener('click', async () => {
+    if (confirm('🧹 確定要清空全月預定的排班表資料嗎？\n\n清空後日曆將呈現乾淨無班表狀態，方便您自行重新預約測試。')) {
+      shifts = [];
+      Store.set('shifts', []);
+      if (supabaseClient) {
+        try {
+          await supabaseClient.from('shifts').delete().neq('id', '');
+        } catch (e) {
+          console.warn('Supabase delete all shifts failed:', e);
+        }
+      }
+      renderSchedule();
+      showToast('排班表已完全清空，可開始乾淨測試！', '🧹');
+    }
   });
 
   // 制度與三階段規則展開按鈕

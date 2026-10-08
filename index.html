@@ -22,7 +22,7 @@
   <!-- Supabase JS Client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
-  <link rel="stylesheet" href="styles.css?v=20261008_v14">
+  <link rel="stylesheet" href="styles.css?v=20261008_v15">
 </head>
 <body>
 
@@ -452,6 +452,11 @@
           <button id="btnFilterVacantOnly" class="btn-secondary" style="padding: 0.4rem 0.75rem; font-size: 0.82rem;">
             <span>⚠️ 僅看缺額</span>
           </button>
+
+          <!-- 一鍵清空排班 (測試用) -->
+          <button id="btnClearAllShiftsTest" class="btn-secondary" style="padding: 0.4rem 0.75rem; font-size: 0.82rem; border-color: rgba(239, 68, 68, 0.4); color: #f87171;" title="清空所有排班資料以利乾淨測試">
+            <span>🧹 清空排班 (測試)</span>
+          </button>
         </div>
       </div>
 
@@ -459,19 +464,19 @@
       <div class="calendar-stats-strip">
         <div class="cal-stat-item">
           <span>📊 全月總班次：</span>
-          <strong id="calStatTotal">70 班</strong>
+          <strong id="calStatTotal">0 班</strong>
         </div>
         <div class="cal-stat-item" style="color: #38bdf8;">
           <span>🚑 救護協勤待命：</span>
-          <strong id="calStatEms">70 班</strong>
+          <strong id="calStatEms">0 班</strong>
         </div>
         <div class="cal-stat-item" style="color: #c084fc;">
           <span>🏢 值班台：</span>
-          <strong id="calStatDesk">10 班</strong>
+          <strong id="calStatDesk">0 班</strong>
         </div>
         <div class="cal-stat-item" style="color: #f87171;">
           <span>⚠️ 待認領缺額：</span>
-          <strong id="calStatVacant">16 班</strong>
+          <strong id="calStatVacant">0 班</strong>
         </div>
         <div class="cal-stat-item" style="margin-left: auto;">
           <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; color: #fbbf24; font-size: 0.82rem; font-weight: 600;">
@@ -1542,6 +1547,6 @@
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- 主邏輯 JS (附防快取版本) -->
-  <script type="module" src="app.js?v=20261008_v14"></script>
+  <script type="module" src="app.js?v=20261008_v15"></script>
 </body>
 </html>
