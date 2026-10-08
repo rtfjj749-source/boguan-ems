@@ -1,4 +1,4 @@
-import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS } from './data.js?v=20261008_v13';
+import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS } from './data.js?v=20261008_v14';
 
 // ==========================================
 // 1. 資料持久化管理 (LocalStorage)
@@ -1861,12 +1861,10 @@ function renderScheduleListView() {
       <td><span style="font-family: var(--font-display); font-weight: 600;">${s.period}</span></td>
       <td><span style="font-size: 0.8rem; color: var(--text-muted);">${s.shiftType}</span></td>
       <td>
-        ${isVacant 
-          ? '<span style="color: #ef4444; font-weight: 700;">⚠️ 尚無人員 (缺額)</span>' 
-          : `<span style="color: #38bdf8; font-weight: 600;">${s.memberName} ${isMine ? '★' : ''}</span>`}
+        <span style="color: #38bdf8; font-weight: 600;">${s.memberName} ${isMine ? '★' : ''}</span>
       </td>
       <td>
-        <span style="font-size: 0.75rem; padding: 2px 8px; border-radius: 99px; ${isVacant ? 'background: rgba(239,68,68,0.2); color: #f87171;' : 'background: rgba(16,185,129,0.15); color: #34d399;'}">
+        <span style="font-size: 0.75rem; padding: 2px 8px; border-radius: 99px; background: rgba(16,185,129,0.15); color: #34d399;">
           ${s.status}
         </span>
       </td>

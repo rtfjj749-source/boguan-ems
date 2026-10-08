@@ -723,4 +723,79 @@ export const INITIAL_SHIFTS = [
     "status": "已排班",
     "shiftType": "自排班"
   }
-]
+];
+
+export const BADGE_DEFINITIONS = [
+  {
+    id: 'b-1',
+    name: '救護百役',
+    category: '出勤里程碑',
+    icon: '🏆',
+    description: '累計跟隨博館救護車出勤超過 100 趟次',
+    threshold: 100,
+    unit: '次出勤',
+    field: 'totalDispatches',
+    color: '#f59e0b',
+    glow: 'rgba(245, 158, 11, 0.4)'
+  },
+  {
+    id: 'b-2',
+    name: '逆轉死神 (ROSC)',
+    category: '急救奇蹟',
+    icon: '⚡',
+    description: '參與現場心肺復甦術並成功於現場或途中恢復自發性心跳 (ROSC)',
+    threshold: 1,
+    unit: '件急救成功',
+    field: 'roscCount',
+    color: '#ef4444',
+    glow: 'rgba(239, 68, 68, 0.4)'
+  },
+  {
+    id: 'b-3',
+    name: '神之心眼 (ECG)',
+    category: '專業技能',
+    icon: '📈',
+    description: '精準操作執行 12 導程心電圖並完成雲端即時判讀傳輸累計 20 例',
+    threshold: 20,
+    unit: '例ECG',
+    field: 'ecgCount',
+    color: '#06b6d4',
+    glow: 'rgba(6, 182, 212, 0.4)'
+  },
+  {
+    id: 'b-4',
+    name: '穿針引線 (IV)',
+    category: '救護進階處置',
+    icon: '💉',
+    description: '重症或創傷急救中成功協助或建立靜脈輸液途徑累計 25 例',
+    threshold: 25,
+    unit: '例靜脈注射',
+    field: 'ivCount',
+    color: '#8b5cf6',
+    glow: 'rgba(139, 92, 246, 0.4)'
+  },
+  {
+    id: 'b-5',
+    name: '守護常勝軍',
+    category: '奉獻時數',
+    icon: '🛡️',
+    description: '年度協勤總時數突破 200 小時，分隊守護中流砥柱',
+    threshold: 200,
+    unit: '小時協勤',
+    field: 'totalHours',
+    color: '#10b981',
+    glow: 'rgba(16, 185, 129, 0.4)'
+  },
+  {
+    id: 'b-6',
+    name: '傳奇鳳凰 (500HR)',
+    category: '終身奉獻',
+    icon: '👑',
+    description: '協勤總時數跨越 500 小時榮譽殿堂',
+    threshold: 500,
+    unit: '小時協勤',
+    field: 'totalHours',
+    color: '#ec4899',
+    glow: 'rgba(236, 72, 153, 0.4)'
+  }
+];
