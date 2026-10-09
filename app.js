@@ -1,4 +1,4 @@
-import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS, SQUAD_CONFIG } from './data.js?v=20261008_v26';
+import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS, SQUAD_CONFIG, INITIAL_ANNOUNCEMENTS } from './data.js?v=20261009_v31';
 
 // ==========================================
 // 1. 資料持久化管理 (LocalStorage)
@@ -114,8 +114,39 @@ let currentMemberId = currentAuthUser ? currentAuthUser.memberId : null;
 let activeDuty = Store.get('activeDuty', null);
 let cancellationLogs = Store.get('cancellation_logs', []);
 Store.set('cancellation_logs', cancellationLogs);
-let announcements = Store.get('announcements', []);
+let announcements = Store.get('announcements', null);
+if (!announcements || !Array.isArray(announcements) || announcements.length === 0) {
+  announcements = Array.isArray(INITIAL_ANNOUNCEMENTS) ? [...INITIAL_ANNOUNCEMENTS] : [];
+  Store.set('announcements', announcements);
+}
 let showHistoryAnnouncements = false;
+
+// 跨視窗/跨分頁/跨帳號零延遲即時同步廣播通道 (BroadcastChannel)
+let emsSyncChannel = null;
+try {
+  if (typeof BroadcastChannel !== 'undefined') {
+    emsSyncChannel = new BroadcastChannel('ems_sync_broadcast_channel');
+    emsSyncChannel.onmessage = (event) => {
+      if (event.data && event.data.type === 'REFRESH_ALL') {
+        attendance = Store.get('attendance', []);
+        dispatches = Store.get('dispatches', []);
+        announcements = Store.get('announcements', []);
+        members = syncOfficialMembers(Store.get('members', []));
+        shifts = Store.get('shifts', []);
+        activeDuty = Store.get('activeDuty', null);
+        updateAllViews();
+      }
+    };
+  }
+} catch (e) {
+  console.warn('BroadcastChannel init notice:', e);
+}
+
+function notifyCrossTabSync() {
+  try {
+    emsSyncChannel?.postMessage({ type: 'REFRESH_ALL', timestamp: Date.now() });
+  } catch (e) {}
+}
 
 // 跨分頁即時同步監聽 (同一瀏覽器不同分頁或身分登入即時連動)
 window.addEventListener('storage', (e) => {
@@ -290,8 +321,10 @@ async function syncDispatchesFromSupabase() {
         specialTag: r.special_tag || ''
       }));
       Store.set('dispatches', dispatches);
-      renderDispatches();
+      renderDispatchList();
       updateTodayStatus();
+      renderSummaryReports();
+      renderOfficerExecutiveDashboard();
     }
   } catch (e) {
     console.warn('Sync dispatches error:', e);
@@ -399,7 +432,7 @@ function pushAttendanceToSupabase(a) {
   try {
     supabaseClient.from('attendance').upsert({
       id: a.id,
-      member_id: a.memberId || null,
+      member_id: null, // 避免雲端 members 表為空時觸發 foreign key violation
       member_name: a.memberName,
       attendance_date: a.date,
       sign_in_time: a.signIn,
@@ -695,24 +728,38 @@ function updateDutyHero() {
   }
 }
 
-// 本日狀況即時統計 (在隊義消名字、出勤趟數)
+// 民國日期正規化 (補齊三位年與兩位月日，例: 115-10-9 -> 115-10-09)
+function normalizeRocDateStr(dateStr) {
+  if (!dateStr || typeof dateStr !== 'string') return '';
+  const clean = dateStr.trim().replace(/\//g, '-');
+  const parts = clean.split('-');
+  if (parts.length === 3) {
+    const y = parts[0].padStart(3, '0');
+    const m = parts[1].padStart(2, '0');
+    const d = parts[2].padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return clean;
+}
+
+// 本日狀況即時統計 (在隊義消名字、出勤趟數、並同步至警消幹部儀表板)
 function updateTodayStatus() {
-  const todayStr = getCurrentRocDate();
+  const rawTodayStr = getCurrentRocDate();
+  const todayStr = normalizeRocDateStr(rawTodayStr);
   const dateEl = document.getElementById('todayStatusDate');
-  if (dateEl) dateEl.textContent = todayStr;
+  if (dateEl) dateEl.textContent = rawTodayStr;
 
   // 1. 本日出勤案件
-  const todayDispatches = dispatches.filter(d => d.date === todayStr);
+  const todayDispatches = dispatches.filter(d => normalizeRocDateStr(d.date) === todayStr);
   const todayDispCount = todayDispatches.length;
   const dispEl = document.getElementById('todayDispatchCount');
   if (dispEl) dispEl.textContent = todayDispCount;
 
-  // 2. 目前在隊義消
-  // 檢查 activeDuty 以及 attendance 中日期為今天且未簽退的紀錄
+  // 2. 目前在隊義消名冊提取
   const onDutyMap = new Map();
 
   attendance.forEach(a => {
-    if (a.date === todayStr && (!a.signOut || a.signOut === '—' || a.signOut === '')) {
+    if (normalizeRocDateStr(a.date) === todayStr && (!a.signOut || a.signOut === '—' || a.signOut === '')) {
       if (!onDutyMap.has(a.memberName)) {
         onDutyMap.set(a.memberName, {
           memberId: a.memberId,
@@ -723,7 +770,7 @@ function updateTodayStatus() {
     }
   });
 
-  if (activeDuty && activeDuty.memberName && activeDuty.dateStr === todayStr) {
+  if (activeDuty && activeDuty.memberName && normalizeRocDateStr(activeDuty.dateStr) === todayStr) {
     if (!onDutyMap.has(activeDuty.memberName)) {
       onDutyMap.set(activeDuty.memberName, {
         memberId: activeDuty.memberId,
@@ -734,6 +781,8 @@ function updateTodayStatus() {
   }
 
   const onDutyList = Array.from(onDutyMap.values());
+
+  // (A) 更新分頁1 (協勤簽到頁面) 的在隊狀態
   const onDutyCountEl = document.getElementById('todayOnDutyCount');
   const badgeEl = document.getElementById('todayDutyCountBadge');
   if (onDutyCountEl) onDutyCountEl.textContent = onDutyList.length;
@@ -759,7 +808,7 @@ function updateTodayStatus() {
     }
   });
 
-  // 渲染在隊名單與出勤趟數
+  // 渲染分頁1 在隊名單與出勤趟數
   const listEl = document.getElementById('todayOnDutyMemberList');
   if (listEl) {
     if (onDutyList.length === 0) {
@@ -787,6 +836,46 @@ function updateTodayStatus() {
   const subtextEl = document.getElementById('todayDispatchSubtext');
   if (subtextEl) {
     subtextEl.textContent = todayDispCount > 0 ? `本日累計出勤 ${todayDispCount} 趟` : '本日尚無救護出勤案件';
+  }
+
+  // (B) 同步更新分頁5 (警消長官專區 / 幹部儀表板) 即時在隊動態看板
+  const dashCountEl = document.getElementById('dashKpiLiveDutyCount');
+  const dashPillEl = document.getElementById('dashLiveDutyPill');
+  const dashSubtextEl = document.getElementById('dashLiveDutySubtext');
+  const dashMemberListEl = document.getElementById('dashLiveDutyMemberList');
+
+  if (dashCountEl) dashCountEl.textContent = onDutyList.length;
+  if (dashPillEl) {
+    dashPillEl.textContent = onDutyList.length > 0 ? `🟢 即時在隊 ${onDutyList.length} 人` : '⚪ 暫無同仁在隊';
+    dashPillEl.style.background = onDutyList.length > 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.05)';
+    dashPillEl.style.color = onDutyList.length > 0 ? '#34d399' : 'var(--text-dim)';
+    dashPillEl.style.borderColor = onDutyList.length > 0 ? '#10b981' : 'var(--border-subtle)';
+  }
+  if (dashSubtextEl) {
+    dashSubtextEl.textContent = `今日累計出勤 ${todayDispCount} 趟 ｜ 掌握博館分隊現場即時執勤戰力`;
+  }
+  if (dashMemberListEl) {
+    if (onDutyList.length === 0) {
+      dashMemberListEl.innerHTML = `
+        <div style="font-size: 0.85rem; color: var(--text-dim); padding: 0.5rem 0;">
+          🕊️ 目前分隊暫無同仁簽到待命中 (同仁手機簽到後將零延遲即時呈現於此)
+        </div>
+      `;
+    } else {
+      dashMemberListEl.innerHTML = onDutyList.map(item => {
+        const dCount = memberDispCountMap[item.memberName] || 0;
+        return `
+          <div style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #f8fafc; padding: 0.4rem 0.85rem; border-radius: 99px; font-size: 0.86rem; display: inline-flex; align-items: center; gap: 0.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.2);">
+            <span style="width: 8px; height: 8px; background: #10b981; border-radius: 50%; box-shadow: 0 0 8px #10b981;"></span>
+            <strong style="color: #ffffff; font-size: 0.92rem;">${item.memberName}</strong>
+            ${item.timeStr ? `<span style="font-size: 0.74rem; color: #38bdf8;">📍 ${item.timeStr} 到隊</span>` : ''}
+            <span style="font-size: 0.72rem; color: #fbbf24; background: rgba(0,0,0,0.35); padding: 1px 7px; border-radius: 99px; font-weight: 600;">
+              出勤 ${dCount} 趟
+            </span>
+          </div>
+        `;
+      }).join('');
+    }
   }
 }
 
@@ -2479,8 +2568,19 @@ function renderSummaryReports() {
     const memberAtt = attendance.filter(a => a.memberName === m.name && a.date.startsWith('115-10'));
     const days = memberAtt.length;
     const hours = memberAtt.reduce((sum, a) => sum + (Number(a.hours) || 0), 0);
-    const dispatchesCount = memberAtt.reduce((sum, a) => sum + (Number(a.dispatches) || 0), 0);
-    const patientsCount = memberAtt.reduce((sum, a) => sum + (Number(a.patients) || 0), 0);
+    const actualDisp = dispatches.filter(d => 
+      (Array.isArray(d.memberNames) && d.memberNames.includes(m.name)) ||
+      (Array.isArray(d.members) && d.members.includes(m.name)) ||
+      d.memberName === m.name
+    );
+    const dispatchesCount = Math.max(
+      memberAtt.reduce((sum, a) => sum + (Number(a.dispatches) || 0), 0),
+      actualDisp.length
+    );
+    const patientsCount = Math.max(
+      memberAtt.reduce((sum, a) => sum + (Number(a.patients) || 0), 0),
+      actualDisp.reduce((sum, d) => sum + (Number(d.patientCount) || 1), 0)
+    );
     const mealTimes = memberAtt.filter(a => Number(a.hours) >= 4).length;
     const mealAmount = mealTimes * 100;
 
@@ -2499,30 +2599,33 @@ function renderSummaryReports() {
     tbody.appendChild(tr);
   });
 
-  // 渲染出勤明細前 5 筆預覽
+  // 渲染出勤明細清單預覽
   const dispatchTbody = document.getElementById('dispatchReportTbody');
-  dispatchTbody.innerHTML = '';
-  dispatches.slice(0, 5).forEach((d, idx) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${idx + 1}</td>
-      <td>${d.caseNo}</td>
-      <td>${d.date}</td>
-      <td>${d.vehicle}</td>
-      <td>${d.departureTime}~${d.returnTime}</td>
-      <td>${d.location}</td>
-      <td>${d.memberNames.join('、')}</td>
-      <td>${d.treatments.join(', ')}</td>
-      <td>${d.isIdle ? '空跑' : d.patientCount + '人'}</td>
-    `;
-    dispatchTbody.appendChild(tr);
-  });
+  if (dispatchTbody) {
+    dispatchTbody.innerHTML = '';
+    dispatches.slice(0, 30).forEach((d, idx) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${idx + 1}</td>
+        <td>${d.caseNo}</td>
+        <td>${d.date}</td>
+        <td>${d.vehicle}</td>
+        <td>${d.departureTime}~${d.returnTime}</td>
+        <td>${d.location}</td>
+        <td>${d.memberNames.join('、')}</td>
+        <td>${d.treatments.join(', ')}</td>
+        <td>${d.isIdle ? '空跑' : (d.patientCount || 1) + '人'}</td>
+      `;
+      dispatchTbody.appendChild(tr);
+    });
+  }
 }
 
 let chartDailyStaffingInstance = null;
 let chartVehicleBreakdownInstance = null;
 
 function renderOfficerExecutiveDashboard() {
+  updateTodayStatus();
   const total = shifts.length;
   const scheduled = shifts.filter(s => s.memberName && s.status !== '缺協勤').length;
   const vacant = total - scheduled;
@@ -2579,8 +2682,19 @@ function renderOfficerExecutiveDashboard() {
       const memberAtt = attendance.filter(a => a.memberName === m.name && a.date.startsWith('115-10'));
       const days = memberAtt.length;
       const hours = memberAtt.reduce((sum, a) => sum + (Number(a.hours) || 0), 0);
-      const dispatchesCount = memberAtt.reduce((sum, a) => sum + (Number(a.dispatches) || 0), 0);
-      const patientsCount = memberAtt.reduce((sum, a) => sum + (Number(a.patients) || 0), 0);
+      const actualDisp = dispatches.filter(d => 
+        (Array.isArray(d.memberNames) && d.memberNames.includes(m.name)) ||
+        (Array.isArray(d.members) && d.members.includes(m.name)) ||
+        d.memberName === m.name
+      );
+      const dispatchesCount = Math.max(
+        memberAtt.reduce((sum, a) => sum + (Number(a.dispatches) || 0), 0),
+        actualDisp.length
+      );
+      const patientsCount = Math.max(
+        memberAtt.reduce((sum, a) => sum + (Number(a.patients) || 0), 0),
+        actualDisp.reduce((sum, d) => sum + (Number(d.patientCount) || 1), 0)
+      );
       const mealTimes = memberAtt.filter(a => Number(a.hours) >= 4).length;
       const mealAmount = mealTimes * 100;
 
@@ -2701,14 +2815,17 @@ function renderOfficerExecutiveDashboard() {
 // 3.8 分隊重要事項公告欄 (具顯示期限管制)
 // ==========================================
 function isAnnouncementActive(ann) {
-  if (!ann || !ann.endDate) return true;
-  const todayStr = getCurrentRocDate();
-  return ann.endDate >= todayStr;
+  if (!ann) return false;
+  if (!ann.endDate) return true;
+  const todayStr = normalizeRocDateStr(getCurrentRocDate());
+  const endStr = normalizeRocDateStr(ann.endDate);
+  return endStr >= todayStr;
 }
 
 function getDaysRemaining(endDateStr) {
   if (!endDateStr) return null;
-  const parts = endDateStr.split('-').map(Number);
+  const norm = normalizeRocDateStr(endDateStr);
+  const parts = norm.split('-').map(Number);
   if (parts.length !== 3) return null;
   const targetDate = new Date(parts[0] + 1911, parts[1] - 1, parts[2], 23, 59, 59);
   const now = new Date();
@@ -2768,9 +2885,28 @@ function renderAnnouncements() {
     lblHistory.textContent = showHistoryAnnouncements ? '🔙 返回有效公告' : '📜 查看歷史公告';
   }
 
-  if (!container) return;
-
   const activeList = announcements.filter(a => isAnnouncementActive(a));
+
+  // 同步更新首頁頂部即時公告醒目橫幅 (#topAnnouncementAlert)
+  const topAlert = document.getElementById('topAnnouncementAlert');
+  const topAlertTitle = document.getElementById('topAnnouncementTitle');
+  const topAlertAuthor = document.getElementById('topAnnouncementAuthor');
+
+  if (topAlert) {
+    if (activeList.length > 0) {
+      const topAnn = activeList.find(a => a.isPinned) || activeList[0];
+      if (topAlertTitle) topAlertTitle.textContent = topAnn.title;
+      if (topAlertAuthor) topAlertAuthor.textContent = `發布者：${topAnn.author || '分隊警消承辦人'} ｜ 有效期限至 ${topAnn.endDate}`;
+      topAlert.style.display = 'block';
+      topAlert.onclick = () => {
+        document.getElementById('announcementBoard')?.scrollIntoView({ behavior: 'smooth' });
+      };
+    } else {
+      topAlert.style.display = 'none';
+    }
+  }
+
+  if (!container) return;
   
   if (badge) {
     badge.textContent = `${activeList.length} 則有效公告`;
@@ -2890,6 +3026,7 @@ function renderAnnouncements() {
           Store.set('announcements', announcements);
           deleteAnnouncementFromSupabase(id);
           renderAnnouncements();
+          notifyCrossTabSync();
           showToast('公告已順利刪除！', '🗑️');
         }
       });
@@ -2983,6 +3120,7 @@ function setupAnnouncementEvents() {
     document.getElementById('modalNewAnnouncement')?.classList.remove('open');
     renderAnnouncements();
     playFeedbackSound('success');
+    notifyCrossTabSync();
   });
 }
 
@@ -3164,6 +3302,7 @@ function performPunchIn(actualTimeStr = null, reason = '', dateVal = null) {
   updateDutyHero();
   updateAllViews();
   playFeedbackSound('success');
+  notifyCrossTabSync();
   
   if (actualTimeStr) {
     showToast(`補登成功！${cur.name} 已校正為 ${timeStr} 到隊協勤（在隊累積已同步起算）`, '📍');
@@ -3243,6 +3382,7 @@ function performPunchOut(actualTimeStr = null, reason = '') {
 
   updateAllViews();
   playFeedbackSound('success');
+  notifyCrossTabSync();
   showToast(`簽退完成！本日協勤 ${durationHours} 小時已存入系統${isMealEligible ? '（符合誤餐費資格）' : ''}`, '🏁');
 }
 
@@ -3560,6 +3700,9 @@ function openEditDispatchModal(id) {
   const title = modal.querySelector('h3');
   if (title) title.textContent = `✏️ 編輯救護出勤紀錄 (${d.caseNo})`;
 
+  if (document.getElementById('inputDispatchDate')) {
+    document.getElementById('inputDispatchDate').value = d.date || getCurrentRocDate();
+  }
   document.getElementById('inputCaseNo').value = d.caseNo;
   document.getElementById('inputVehicle').value = d.vehicle || '博館91';
   document.getElementById('inputDepartureTime').value = normalizeTimeStr(d.departureTime) || '20:00';
@@ -3609,6 +3752,7 @@ function deleteDispatchRecord(id) {
   Store.set('dispatches', dispatches);
   deleteDispatchFromSupabase(id);
   updateAllViews();
+  notifyCrossTabSync();
   showToast(`已刪除救護出勤紀錄案號 ${d.caseNo}！`, '🗑️');
   playFeedbackSound('success');
 }
@@ -3793,7 +3937,14 @@ function setupModals() {
     modalDispatch.removeAttribute('data-edit-id');
     const title = modalDispatch.querySelector('h3');
     if (title) title.textContent = '🚑 登記救護出勤紀錄';
-    document.getElementById('inputCaseNo').value = `1151007-${String(dispatches.length + 1).padStart(2, '0')}`;
+    
+    const curRocDate = getCurrentRocDate();
+    const dateNoDashes = curRocDate.replace(/-/g, '');
+    const todaysDispCount = dispatches.filter(d => normalizeRocDateStr(d.date) === normalizeRocDateStr(curRocDate)).length + 1;
+    document.getElementById('inputCaseNo').value = `${dateNoDashes}-${String(todaysDispCount).padStart(2, '0')}`;
+    if (document.getElementById('inputDispatchDate')) {
+      document.getElementById('inputDispatchDate').value = curRocDate;
+    }
     document.getElementById('inputVehicle').value = '博館91';
     
     // 預設當前 24 小時制時間
@@ -4191,6 +4342,8 @@ function setupModals() {
       patientCount = isIdle ? 0 : 1;
     }
 
+    const dispatchDate = document.getElementById('inputDispatchDate')?.value.trim() || getCurrentRocDate();
+
     const editId = modalDispatch.getAttribute('data-edit-id');
     if (editId) {
       // 警消或隊員編輯修改既有出勤紀錄
@@ -4199,6 +4352,7 @@ function setupModals() {
         dispatches[idx] = {
           ...dispatches[idx],
           caseNo,
+          date: dispatchDate,
           vehicle,
           departureTime,
           returnTime,
@@ -4223,6 +4377,7 @@ function setupModals() {
       modalDispatch.classList.remove('open');
       updateAllViews();
       playFeedbackSound('success');
+      notifyCrossTabSync();
       showToast(`救護出勤案號 ${caseNo} 資料已成功更新！`, '💾');
       return;
     }
@@ -4230,7 +4385,7 @@ function setupModals() {
     const newDisp = {
       id: `disp-${Date.now()}`,
       caseNo,
-      date: getCurrentRocDate(),
+      date: dispatchDate,
       vehicle,
       departureTime,
       returnTime,
@@ -4251,7 +4406,7 @@ function setupModals() {
     Store.set('dispatches', dispatches);
     pushDispatchToSupabase(newDisp);
 
-    // 同步升級所有出勤同仁數據 (全員同步累加榮譽履歷)
+    // 1. 同步升級所有出勤同仁數據 (全員同步累加榮譽履歷)
     currentDispatchSelectedMembers.forEach(targetMem => {
       const mem = members.find(m => m.name === targetMem.name || m.id === targetMem.id);
       if (mem) {
@@ -4263,9 +4418,28 @@ function setupModals() {
     });
     Store.set('members', members);
 
+    // 2. 自動連動出勤同仁當日在隊簽到記錄 (累加出勤趟數與服務人次)
+    let attendanceUpdated = false;
+    currentDispatchSelectedMembers.forEach(targetMem => {
+      const attRecord = attendance.find(a => 
+        (a.memberId === targetMem.id || a.memberName === targetMem.name) && 
+        normalizeRocDateStr(a.date) === normalizeRocDateStr(dispatchDate)
+      );
+      if (attRecord) {
+        attRecord.dispatches = (Number(attRecord.dispatches) || 0) + 1;
+        attRecord.patients = (Number(attRecord.patients) || 0) + patientCount;
+        pushAttendanceToSupabase(attRecord);
+        attendanceUpdated = true;
+      }
+    });
+    if (attendanceUpdated) {
+      Store.set('attendance', attendance);
+    }
+
     modalDispatch.classList.remove('open');
     updateAllViews();
     playFeedbackSound('success');
+    notifyCrossTabSync();
     showToast(`救護出勤案號 ${caseNo} 登記完成！已同步認列【${memberNames.join('、')}】共 ${memberNames.length} 位同仁之救護履歷！`, '🚑');
   });
 
@@ -4805,10 +4979,47 @@ function setupDeviceToggle() {
 }
 
 // ==========================================
-// 8. 頁籤切換 (Tabs)
+// 8. 頁籤切換 (Tabs & Mobile Bottom Nav)
 // ==========================================
 function setupTabs() {
   const tabBtns = document.querySelectorAll('.tab-btn');
+  const bottomNavItems = document.querySelectorAll('.bottom-nav-item[data-tab]');
+  const btnBottomNavMore = document.getElementById('btnBottomNavMore');
+  const mobileMoreDrawer = document.getElementById('mobileMoreDrawer');
+  const btnCloseDrawer = document.getElementById('btnCloseDrawer');
+
+  // 同步底部導覽列 Active 狀態
+  function syncBottomNavActive(targetTab) {
+    let matched = false;
+    bottomNavItems.forEach(item => {
+      if (item.getAttribute('data-tab') === targetTab) {
+        item.classList.add('active');
+        matched = true;
+      } else {
+        item.classList.remove('active');
+      }
+    });
+
+    if (btnBottomNavMore) {
+      if (!matched && ['tab-roster', 'tab-officer-dashboard', 'tab-reports', 'tab-supabase'].includes(targetTab)) {
+        btnBottomNavMore.classList.add('active');
+      } else {
+        btnBottomNavMore.classList.remove('active');
+      }
+    }
+  }
+
+  // 頂部最新公告橫幅點擊直達「分隊公告」分頁
+  document.getElementById('btnScrollToAnnouncements')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.querySelector('.tab-btn[data-tab="tab-announcements"]')?.click();
+  });
+  document.getElementById('topAnnouncementAlert')?.addEventListener('click', (e) => {
+    if (e.target.tagName !== 'BUTTON') {
+      document.querySelector('.tab-btn[data-tab="tab-announcements"]')?.click();
+    }
+  });
+
   tabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       tabBtns.forEach(b => b.classList.remove('active'));
@@ -4836,8 +5047,68 @@ function setupTabs() {
       if (targetTab === 'tab-officer-dashboard') {
         renderOfficerExecutiveDashboard();
       }
+
+      // 同步底部快捷導覽列
+      syncBottomNavActive(targetTab);
     });
   });
+
+  // 手機底部導覽列點擊切換
+  bottomNavItems.forEach(item => {
+    item.addEventListener('click', () => {
+      const targetTab = item.getAttribute('data-tab');
+      const targetBtn = document.querySelector(`.tab-btn[data-tab="${targetTab}"]`);
+      if (targetBtn) {
+        targetBtn.click();
+      }
+    });
+  });
+
+  // 手機底部「更多功能」抽屜選單互動
+  if (btnBottomNavMore && mobileMoreDrawer) {
+    btnBottomNavMore.addEventListener('click', (e) => {
+      e.stopPropagation();
+      mobileMoreDrawer.classList.toggle('open');
+    });
+
+    btnCloseDrawer?.addEventListener('click', () => {
+      mobileMoreDrawer.classList.remove('open');
+    });
+
+    mobileMoreDrawer.addEventListener('click', (e) => {
+      if (e.target === mobileMoreDrawer) {
+        mobileMoreDrawer.classList.remove('open');
+      }
+    });
+
+    // 抽屜內各功能頁籤點擊
+    mobileMoreDrawer.querySelectorAll('.drawer-item[data-tab]').forEach(item => {
+      item.addEventListener('click', () => {
+        const targetTab = item.getAttribute('data-tab');
+        mobileMoreDrawer.classList.remove('open');
+        const targetBtn = document.querySelector(`.tab-btn[data-tab="${targetTab}"]`);
+        if (targetBtn) {
+          targetBtn.click();
+        }
+      });
+    });
+
+    // 抽屜內快速功能快捷鍵
+    document.getElementById('drawerBtnSupabaseModal')?.addEventListener('click', () => {
+      mobileMoreDrawer.classList.remove('open');
+      document.getElementById('btnOpenSupabaseModal')?.click();
+    });
+
+    document.getElementById('drawerBtnChangePassword')?.addEventListener('click', () => {
+      mobileMoreDrawer.classList.remove('open');
+      document.getElementById('btnOpenChangePassword')?.click();
+    });
+
+    document.getElementById('drawerBtnLogout')?.addEventListener('click', () => {
+      mobileMoreDrawer.classList.remove('open');
+      document.getElementById('btnLogout')?.click();
+    });
+  }
 
   // 支援網址直接帶入 Hash (例如: #tab-schedule 或 #tab-badges) 直接開啟對應分頁
   function switchTabByHash() {
@@ -4847,6 +5118,9 @@ function setupTabs() {
       if (targetBtn && !targetBtn.classList.contains('active')) {
         targetBtn.click();
       }
+    } else {
+      // 預設為協勤打卡
+      syncBottomNavActive('tab-checkin');
     }
   }
 

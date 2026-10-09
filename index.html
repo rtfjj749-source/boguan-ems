@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>博館分隊救護義消智慧協勤系統 | EMS Volunteer Copilot</title>
   
   <!-- Google Fonts -->
@@ -22,7 +22,7 @@
   <!-- Supabase JS Client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
-  <link rel="stylesheet" href="styles.css?v=20261008_v27">
+  <link rel="stylesheet" href="styles.css?v=20261009_v31">
 </head>
 <body>
 
@@ -91,6 +91,9 @@
         <button class="tab-btn" data-tab="tab-schedule">
           <span>📅</span> 排班日曆
         </button>
+        <button class="tab-btn" data-tab="tab-announcements">
+          <span>📢</span> 分隊公告
+        </button>
         <button class="tab-btn" data-tab="tab-roster" style="border: 1px solid rgba(6, 182, 212, 0.6); color: #38bdf8; position: relative;">
           <span>👥</span> 義消人員名單 <span style="font-size: 0.68rem; background: #06b6d4; color: #020617; padding: 1px 6px; border-radius: 99px; font-weight: 800; margin-left: 3px;">54人</span>
         </button>
@@ -130,6 +133,23 @@
 
     <!-- ==================== TAB 1: 協勤打卡專區 ==================== -->
     <section id="tab-checkin" class="tab-content active">
+
+      <!-- 📢 分隊最新重要公告置頂橫幅 (義消一登入即可看見，點擊直達分隊公告) -->
+      <div id="topAnnouncementAlert" class="glass-card" style="display: none; margin-bottom: 1rem; border-left: 4px solid #f59e0b; background: rgba(245, 158, 11, 0.08); padding: 0.85rem 1.15rem; cursor: pointer;">
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+          <div style="display: flex; align-items: center; gap: 0.65rem; min-width: 0; flex: 1;">
+            <span style="font-size: 1.35rem; flex-shrink: 0;">📢</span>
+            <div style="min-width: 0;">
+              <div style="font-size: 0.75rem; color: #fbbf24; font-weight: 700; letter-spacing: 0.5px;">分隊最新公告宣導</div>
+              <div id="topAnnouncementText" style="font-size: 0.95rem; font-weight: 700; color: #f8fafc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></div>
+            </div>
+          </div>
+          <button type="button" id="btnScrollToAnnouncements" class="btn-secondary" style="font-size: 0.75rem; padding: 0.35rem 0.8rem; border-color: rgba(245,158,11,0.4); color: #fbbf24; cursor: pointer; border-radius: 99px; font-weight: 600;">
+            查看公告 ➔
+          </button>
+        </div>
+      </div>
+
       <div class="grid-2">
         <!-- 打卡核心卡片 -->
         <div class="glass-card hero-duty-card">
@@ -218,32 +238,6 @@
 
       <!-- 隊上夥伴動態 & 近期在隊簽到記錄 -->
       <div class="glass-card" style="margin-top: 1.25rem;">
-        
-        <!-- 📢 分隊重要事項公告欄 (有期限之公告顯示於此) -->
-        <div id="announcementBoard" style="margin-bottom: 1.25rem; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 1.1rem;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem; flex-wrap: wrap; gap: 0.5rem;">
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
-              <span style="font-size: 1.2rem;">📢</span>
-              <h4 style="font-size: 1.02rem; font-weight: 700; color: #f8fafc; margin: 0;">分隊重要事項公告欄</h4>
-              <span id="announcementActiveBadge" class="badge-role" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 0.72rem; padding: 0.15rem 0.55rem; border-radius: 99px;">0 則有效公告</span>
-            </div>
-            <div style="display: flex; gap: 0.5rem; align-items: center;">
-              <!-- 警消專屬：發布公告按鈕 (警消登入時自動顯示) -->
-              <button id="btnOpenNewAnnouncementModal" class="btn-primary" style="display: none; font-size: 0.78rem; padding: 0.35rem 0.75rem; background: linear-gradient(135deg, #0284c7, #0369a1); border: none;">
-                <span>➕ 發布新公告</span>
-              </button>
-              <button id="btnToggleHistoryAnnouncements" class="btn-secondary" style="font-size: 0.76rem; padding: 0.35rem 0.65rem;">
-                <span id="lblToggleHistory">📜 查看歷史公告</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- 公告列表容器 (動態渲染) -->
-          <div id="announcementListContainer" style="display: flex; flex-direction: column; gap: 0.75rem;">
-            <!-- 動態插入公告卡片 -->
-          </div>
-        </div>
-
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
           <h3 style="font-size: 1.05rem; font-weight: 700;">👥 今日在隊與最近簽到動態</h3>
           <div style="display: flex; align-items: center; gap: 0.6rem;">
@@ -323,7 +317,7 @@
     <section id="tab-schedule" class="tab-content" style="display: none;">
       
       <!-- 排班制度與四大鐵律公告卡片 (可收合) -->
-      <div class="glass-card" style="border-left: 4px solid var(--primary-cyan); margin-bottom: 1.25rem; padding: 1.1rem 1.35rem;">
+      <div class="glass-card schedule-rules-card" style="border-left: 4px solid var(--primary-cyan); margin-bottom: 1.25rem; padding: 1.1rem 1.35rem;">
         <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap;">
           <div>
             <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem;">
@@ -370,7 +364,7 @@
       </div>
 
       <!-- 個人目前預約配額與管制狀態指示卡 -->
-      <div class="glass-card" style="padding: 1rem 1.25rem; margin-bottom: 1.25rem; background: linear-gradient(135deg, rgba(30,41,59,0.7), rgba(15,23,42,0.8));">
+      <div class="glass-card schedule-quota-card" style="padding: 1rem 1.25rem; margin-bottom: 1.25rem; background: linear-gradient(135deg, rgba(30,41,59,0.7), rgba(15,23,42,0.8));">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
           <div style="display: flex; align-items: center; gap: 1rem;">
             <div style="font-size: 2rem;" id="userQuotaAvatar">👨‍🚒</div>
@@ -501,7 +495,38 @@
       </div>
     </section>
 
-    
+    <!-- ==================== TAB: 分隊重要公告 ==================== -->
+    <section id="tab-announcements" class="tab-content" style="display: none;">
+      <div class="glass-card" style="border-left: 4px solid var(--primary-cyan); margin-bottom: 1.25rem; padding: 1.25rem;">
+        <div id="announcementBoard">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.75rem;">
+            <div style="display: flex; align-items: center; gap: 0.6rem;">
+              <span style="font-size: 1.4rem;">📢</span>
+              <div>
+                <h3 style="font-size: 1.15rem; font-weight: 700; color: #f8fafc; margin: 0;">博館分隊重要事項公告欄</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin: 2px 0 0 0;">隨時掌握分隊長官發布之即時公文通報、協勤規範與重要宣導</p>
+              </div>
+            </div>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <span id="announcementActiveBadge" class="badge-role" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 0.78rem; padding: 0.2rem 0.65rem; border-radius: 99px; font-weight: 700;">0 則有效公告</span>
+              <!-- 警消專屬：發布公告按鈕 (警消登入時自動顯示) -->
+              <button id="btnOpenNewAnnouncementModal" class="btn-primary" style="display: none; font-size: 0.78rem; padding: 0.35rem 0.75rem; background: linear-gradient(135deg, #0284c7, #0369a1); border: none;">
+                <span>➕ 發布新公告</span>
+              </button>
+              <button id="btnToggleHistoryAnnouncements" class="btn-secondary" style="font-size: 0.76rem; padding: 0.35rem 0.65rem;">
+                <span id="lblToggleHistory">📜 查看歷史公告</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 公告列表容器 (動態渲染) -->
+          <div id="announcementListContainer" style="display: flex; flex-direction: column; gap: 0.85rem;">
+            <!-- 動態插入公告卡片 -->
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ==================== TAB: 義消人員名單 ==================== -->
     <section id="tab-roster" class="tab-content" style="display: none;">
       <!-- 頂部概覽看板 -->
@@ -705,6 +730,42 @@
             <button id="btnRefreshOfficerCharts" class="btn-secondary" style="font-size: 0.85rem; padding: 0.45rem 0.85rem;">
               <span>🔄 重新計算戰情指標</span>
             </button>
+          </div>
+        </div>
+      </div>
+      <!-- 警消即時戰情第一核心：今日現場在隊值勤監控 -->
+      <div class="glass-card" style="margin-bottom: 1.25rem; border-left: 5px solid #10b981; background: radial-gradient(circle at top right, rgba(16, 185, 129, 0.15), transparent 70%), var(--bg-card); padding: 1.15rem 1.35rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 0.85rem;">
+          <div style="display: flex; align-items: center; gap: 0.65rem;">
+            <span style="font-size: 1.4rem;">🟢</span>
+            <div>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <h3 style="font-size: 1.15rem; font-weight: 800; color: #f8fafc; margin: 0;">分隊現場協勤人員即時在隊動態</h3>
+                <span id="dashLiveDutyPill" class="badge-role" style="background: rgba(16,185,129,0.2); color: #34d399; font-size: 0.82rem; padding: 2px 10px; border-radius: 99px; font-weight: 700;">
+                  在隊 0 人
+                </span>
+              </div>
+              <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">
+                即時掌握值班台與救護車待命人力，同仁於手機或值班台簽到時此處同步自動刷新
+              </p>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <div style="text-align: right;">
+              <div style="font-size: 0.72rem; color: var(--text-muted);">目前在隊待命人數</div>
+              <div id="dashKpiLiveDutyCount" style="font-size: 1.75rem; font-weight: 800; font-family: var(--font-display); color: #34d399; line-height: 1;">0 人</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 在隊同仁人員名單列表 -->
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 0.75rem 1rem;">
+          <div style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
+            <span>👥 目前在隊同仁與出勤狀態：</span>
+            <span id="dashLiveDutySubtext" style="font-size: 0.72rem; color: #38bdf8;"></span>
+          </div>
+          <div id="dashLiveDutyMemberList" style="display: flex; flex-wrap: wrap; gap: 0.5rem; min-height: 38px; align-items: center;">
+            <!-- 動態插入在隊同仁標籤 -->
           </div>
         </div>
       </div>
@@ -1160,8 +1221,15 @@
         <div class="grid-2">
           <div class="form-group">
             <label>救護案號</label>
-            <input type="text" id="inputCaseNo" class="form-input" required placeholder="例如: 1151007-03">
+            <input type="text" id="inputCaseNo" class="form-input" required placeholder="例如: 1151009-01">
           </div>
+          <div class="form-group">
+            <label>出勤日期 (民國格式，如 115-10-09)</label>
+            <input type="text" id="inputDispatchDate" class="form-input" required placeholder="例如: 115-10-09">
+          </div>
+        </div>
+
+        <div class="grid-3">
           <div class="form-group">
             <label>出勤車輛</label>
             <select id="inputVehicle" class="form-select">
@@ -1170,9 +1238,6 @@
               <option value="91-92">91-92</option>
             </select>
           </div>
-        </div>
-
-        <div class="grid-2">
           <div class="form-group">
             <label>出勤時間 (24小時制)</label>
             <input type="text" id="inputDepartureTime" class="form-input time-24h" required placeholder="例如: 20:00" value="20:00" maxlength="5">
@@ -2146,10 +2211,114 @@
     </div>
   </div>
 
+  <!-- ==============================================================================
+       手機底部快捷原生導覽列 (Mobile Bottom Navigation Bar) - 方案 1
+       ============================================================================== -->
+  <nav class="mobile-bottom-nav" id="mobileBottomNav">
+    <button type="button" class="bottom-nav-item active" data-tab="tab-checkin" id="bottomNavCheckin">
+      <span class="nav-icon">📱</span>
+      <span class="nav-label">協勤打卡</span>
+    </button>
+    <button type="button" class="bottom-nav-item" data-tab="tab-dispatches" id="bottomNavDispatches">
+      <span class="nav-icon">🚑</span>
+      <span class="nav-label">救護出勤</span>
+    </button>
+    <button type="button" class="bottom-nav-item" data-tab="tab-schedule" id="bottomNavSchedule">
+      <span class="nav-icon">📅</span>
+      <span class="nav-label">排班日曆</span>
+    </button>
+    <button type="button" class="bottom-nav-item" data-tab="tab-announcements" id="bottomNavAnnouncements">
+      <span class="nav-icon">📢</span>
+      <span class="nav-label">分隊公告</span>
+    </button>
+    <button type="button" class="bottom-nav-item" id="btnBottomNavMore">
+      <span class="nav-icon">📂</span>
+      <span class="nav-label">更多功能</span>
+    </button>
+  </nav>
+
+  <!-- 手機版「更多功能」抽屜選單 (Bottom Sheet Action Drawer) -->
+  <div id="mobileMoreDrawer" class="mobile-more-drawer-overlay">
+    <div class="mobile-more-drawer-content">
+      <div class="drawer-drag-handle"></div>
+      <div class="drawer-header">
+        <h3><span>⚡</span> 分隊系統功能與管理</h3>
+        <button type="button" class="btn-close-drawer" id="btnCloseDrawer" aria-label="關閉選單">✕</button>
+      </div>
+      
+      <div class="drawer-grid">
+        <button type="button" class="drawer-item" data-tab="tab-roster">
+          <div class="drawer-item-icon" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4;">👥</div>
+          <div class="drawer-item-info">
+            <div class="drawer-item-title">義消人員名冊 (54人)</div>
+            <div class="drawer-item-sub">全隊幹部小隊編制名單、證照等級與聯絡資訊</div>
+          </div>
+          <div class="drawer-arrow">›</div>
+        </button>
+
+        <button type="button" class="drawer-item" data-tab="tab-officer-dashboard">
+          <div class="drawer-item-icon" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24;">📈</div>
+          <div class="drawer-item-info">
+            <div class="drawer-item-title">資訊儀錶板</div>
+            <div class="drawer-item-sub">大隊出勤統計、月度時數與時段分析圖表</div>
+          </div>
+          <div class="drawer-arrow">›</div>
+        </button>
+
+        <button type="button" class="drawer-item" data-tab="tab-reports">
+          <div class="drawer-item-icon" style="background: rgba(16, 185, 129, 0.15); color: #34d399;">📊</div>
+          <div class="drawer-item-info">
+            <div class="drawer-item-title">月底公文報表匯出</div>
+            <div class="drawer-item-sub">一鍵產製出勤紀錄表、簽到退表及 Excel 檔</div>
+          </div>
+          <div class="drawer-arrow">›</div>
+        </button>
+
+        <button type="button" class="drawer-item" data-tab="tab-supabase">
+          <div class="drawer-item-icon" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">⚡</div>
+          <div class="drawer-item-info">
+            <div class="drawer-item-title">Supabase 資料庫架構</div>
+            <div class="drawer-item-sub">檢視雲端 SQL 資料表結構與同步狀態</div>
+          </div>
+          <div class="drawer-arrow">›</div>
+        </button>
+
+        <div style="height: 1px; background: rgba(255, 255, 255, 0.08); margin: 0.25rem 0;"></div>
+
+        <button type="button" class="drawer-item" id="drawerBtnSupabaseModal">
+          <div class="drawer-item-icon" style="background: rgba(14, 165, 233, 0.15); color: #38bdf8;">☁️</div>
+          <div class="drawer-item-info">
+            <div class="drawer-item-title">雲端資料庫同步設定</div>
+            <div class="drawer-item-sub">設定 Supabase URL / API Key 連線</div>
+          </div>
+          <div class="drawer-arrow">›</div>
+        </button>
+
+        <button type="button" class="drawer-item" id="drawerBtnChangePassword">
+          <div class="drawer-item-icon" style="background: rgba(168, 85, 247, 0.15); color: #c084fc;">🔑</div>
+          <div class="drawer-item-info">
+            <div class="drawer-item-title">變更個人密碼</div>
+            <div class="drawer-item-sub">修改當前登入義消帳號之密碼</div>
+          </div>
+          <div class="drawer-arrow">›</div>
+        </button>
+
+        <button type="button" class="drawer-item" id="drawerBtnLogout" style="border-color: rgba(239, 68, 68, 0.2);">
+          <div class="drawer-item-icon" style="background: rgba(239, 68, 68, 0.15); color: #f87171;">🚪</div>
+          <div class="drawer-item-info">
+            <div class="drawer-item-title" style="color: #f87171;">登出當前帳號</div>
+            <div class="drawer-item-sub">安全結束本次作業並返回登入狀態</div>
+          </div>
+          <div class="drawer-arrow" style="color: #f87171;">›</div>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast 通知容器 -->
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- 主邏輯 JS (附防快取版本) -->
-  <script type="module" src="app.js?v=20261008_v26"></script>
+  <script type="module" src="app.js?v=20261009_v31"></script>
 </body>
 </html>

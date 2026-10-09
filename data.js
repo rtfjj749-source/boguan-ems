@@ -158,3 +158,20 @@ export const SQUAD_CONFIG = [
   { id: 'squad-3', name: '第三小隊', icon: '🚒', leader: '曾子庭 (小隊長)', deputy: '林立強 (副小隊長)', desc: '第三救護協勤責任分組', badgeColor: '#8b5cf6' },
   { id: 'squad-central', name: '中區', icon: '🚒', leader: '中區協勤組', desc: '中區責任區域協勤支援同仁', badgeColor: '#38bdf8' }
 ];
+
+export const INITIAL_ANNOUNCEMENTS = [
+  {
+    id: 'ann-init-1',
+    title: '📢 10月份救護協勤出勤規範與常年訓練注意事項',
+    category: '重要宣導',
+    priority: 'urgent',
+    content: '各位博館救護義消弟兄姐妹大家好：\n1. 【出勤儀容與安全】：協勤時請務必著規定之救護義消制服或救護工作服、反光背心，隨車出勤落實自身防護。\n2. 【線上打卡登記】：到隊請記得點擊「📍 簽到」，離隊時務必點擊「🏁 簽退」，以利系統核算協勤時數與誤餐費（滿4小時核給100元）。\n3. 【急救處置重點】：載送 OHCA 或胸痛患者時，請主動協助同仁實施 CPR、AED 及 12-Lead 心電圖到院前傳輸。\n感謝全體同仁對博館分隊緊急救護勤務的熱忱投入與無私奉獻！',
+    startDate: '115-10-01',
+    endDate: '115-10-31',
+    author: '分隊警消承辦人',
+    createdDateStr: '115-10-01 08:00',
+    createdAt: 1727740800000,
+    isPinned: true
+  }
+];
+
