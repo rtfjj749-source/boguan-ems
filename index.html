@@ -22,87 +22,89 @@
   <!-- Supabase JS Client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
-  <link rel="stylesheet" href="styles.css?v=20261008_v26">
+  <link rel="stylesheet" href="styles.css?v=20261008_v27">
 </head>
 <body>
 
-  <!-- 頂部功能導覽列 -->
-  <header class="navbar">
-    <div class="nav-brand">
-      <div class="brand-icon">🚑</div>
-      <div class="brand-text">
-        <h1>臺中市消防局 鳳凰救護大隊 博館分隊</h1>
-        <p>救護義消智慧協勤與榮譽履歷系統 (EMS Copilot)</p>
-      </div>
-    </div>
-
-    <div class="nav-actions">
-      <!-- 雲端資料庫 Supabase 設定按鈕 -->
-      <button id="btnOpenSupabaseModal" class="btn-toggle-device" style="border-color: rgba(6,182,212,0.4); color: #38bdf8;" title="設定 Supabase 雲端資料庫連線">
-        <span id="cloudStatusIndicator">☁️ 雲端同步</span>
-      </button>
-
-      <!-- 視角切換器 (手機模擬 / 電腦全螢幕) -->
-      <button id="btnToggleDevice" class="btn-toggle-device" title="切換義消手機模擬視角或電腦後台視角">
-        <span>📱 切換視角</span>
-      </button>
-
-      <!-- 登入身分與帳號狀態列 (預設未登入，由 JS 判斷動態切換) -->
-      <div id="userAuthBadgeWrapper" class="user-auth-badge" style="display: none;">
-        <div id="currentUserPill" class="current-user-pill">
-          <span id="currentUserAvatar">👨‍🚒</span>
-          <span id="currentUserName" style="font-weight: 700; color: #f8fafc;">未登入</span>
-          <span id="currentMemberRoleBadge" class="role-badge-sm">⭐ 隊員</span>
+  <!-- 頂部吸頂包覆區 (導覽列與功能頁籤列同步置頂) -->
+  <div class="top-sticky-header">
+    <header class="navbar">
+      <div class="nav-brand">
+        <div class="brand-icon">🚑</div>
+        <div class="brand-text">
+          <h1>臺中市消防局 鳳凰救護大隊 博館分隊</h1>
+          <p>救護義消智慧協勤與榮譽履歷系統 (EMS Copilot)</p>
         </div>
-        
-        <button id="btnOpenChangePassword" type="button" class="btn-sm-action" title="變更個人登入密碼">
-          <span>🔑 密碼</span>
-        </button>
-
-        <button id="btnLogout" type="button" class="btn-sm-action danger" title="登出系統">
-          <span>🚪 登出</span>
-        </button>
       </div>
 
-      <div id="unauthenticatedWrapper" style="display: flex; align-items: center;">
-        <button id="btnOpenLoginModal" type="button" class="btn-primary" style="padding: 0.45rem 1rem; font-size: 0.85rem;">
-          <span>🔐 隊員登入</span>
+      <div class="nav-actions">
+        <!-- 雲端資料庫 Supabase 設定按鈕 -->
+        <button id="btnOpenSupabaseModal" class="btn-toggle-device" style="border-color: rgba(6,182,212,0.4); color: #38bdf8;" title="設定 Supabase 雲端資料庫連線">
+          <span id="cloudStatusIndicator">☁️ 雲端同步</span>
         </button>
-      </div>
 
-      <!-- 承辦人專屬：切換預覽下拉 (僅承辦人登入時可見) -->
-      <div id="adminSimulateWrapper" class="member-select-wrapper" style="display: none;">
-        <label for="memberSelect" style="color: #fbbf24;">👑 承辦切換視角：</label>
-        <select id="memberSelect" class="member-select"></select>
+        <!-- 視角切換器 (手機模擬 / 電腦全螢幕) -->
+        <button id="btnToggleDevice" class="btn-toggle-device" title="切換義消手機模擬視角或電腦後台視角">
+          <span>📱 切換視角</span>
+        </button>
+
+        <!-- 登入身分與帳號狀態列 (預設未登入，由 JS 判斷動態切換) -->
+        <div id="userAuthBadgeWrapper" class="user-auth-badge" style="display: none;">
+          <div id="currentUserPill" class="current-user-pill">
+            <span id="currentUserAvatar">👨‍🚒</span>
+            <span id="currentUserName" style="font-weight: 700; color: #f8fafc;">未登入</span>
+            <span id="currentMemberRoleBadge" class="role-badge-sm">⭐ 隊員</span>
+          </div>
+          
+          <button id="btnOpenChangePassword" type="button" class="btn-sm-action" title="變更個人登入密碼">
+            <span>🔑 密碼</span>
+          </button>
+
+          <button id="btnLogout" type="button" class="btn-sm-action danger" title="登出系統">
+            <span>🚪 登出</span>
+          </button>
+        </div>
+
+        <div id="unauthenticatedWrapper" style="display: flex; align-items: center;">
+          <button id="btnOpenLoginModal" type="button" class="btn-primary" style="padding: 0.45rem 1rem; font-size: 0.85rem;">
+            <span>🔐 隊員登入</span>
+          </button>
+        </div>
+
+        <!-- 承辦人專屬：切換預覽下拉 (僅承辦人登入時可見) -->
+        <div id="adminSimulateWrapper" class="member-select-wrapper" style="display: none;">
+          <label for="memberSelect" style="color: #fbbf24;">👑 承辦切換視角：</label>
+          <select id="memberSelect" class="member-select"></select>
+        </div>
       </div>
+    </header>
+
+    <!-- 功能頁籤導覽列 (置頂固定) -->
+    <div class="tabs-container">
+      <nav class="tabs-bar">
+        <button class="tab-btn active" data-tab="tab-checkin">
+          <span>📱</span> 協勤打卡
+        </button>
+        <button class="tab-btn" data-tab="tab-dispatches">
+          <span>🚑</span> 救護出勤紀錄
+        </button>
+        <button class="tab-btn" data-tab="tab-schedule">
+          <span>📅</span> 排班日曆
+        </button>
+        <button class="tab-btn" data-tab="tab-roster" style="border: 1px solid rgba(6, 182, 212, 0.6); color: #38bdf8; position: relative;">
+          <span>👥</span> 義消人員名單 <span style="font-size: 0.68rem; background: #06b6d4; color: #020617; padding: 1px 6px; border-radius: 99px; font-weight: 800; margin-left: 3px;">54人</span>
+        </button>
+        <button class="tab-btn" data-tab="tab-officer-dashboard" style="border: 1px solid rgba(245, 158, 11, 0.5); color: #fbbf24;">
+          <span>📈</span> 資訊儀錶板
+        </button>
+        <button class="tab-btn" data-tab="tab-reports">
+          <span>📊</span> 月底公文報表匯出
+        </button>
+        <button class="tab-btn" data-tab="tab-supabase">
+          <span>⚡</span> Supabase 資料庫架構
+        </button>
+      </nav>
     </div>
-  </header>
-
-  <!-- 功能頁籤導覽列 -->
-  <div class="tabs-container">
-    <nav class="tabs-bar">
-      <button class="tab-btn active" data-tab="tab-checkin">
-        <span>📱</span> 協勤打卡
-      </button>
-      <button class="tab-btn" data-tab="tab-dispatches">
-        <span>🚑</span> 救護出勤紀錄
-      </button>
-      <button class="tab-btn" data-tab="tab-schedule">
-        <span>📅</span> 排班日曆
-      </button>
-      <button class="tab-btn" data-tab="tab-roster" style="border: 1px solid rgba(6, 182, 212, 0.6); color: #38bdf8; position: relative;">
-        <span>👥</span> 義消人員名單 <span style="font-size: 0.68rem; background: #06b6d4; color: #020617; padding: 1px 6px; border-radius: 99px; font-weight: 800; margin-left: 3px;">54人</span>
-      </button>
-      <button class="tab-btn" data-tab="tab-officer-dashboard" style="border: 1px solid rgba(245, 158, 11, 0.5); color: #fbbf24;">
-        <span>📈</span> 資訊儀錶板
-      </button>
-      <button class="tab-btn" data-tab="tab-reports">
-        <span>📊</span> 月底公文報表匯出
-      </button>
-      <button class="tab-btn" data-tab="tab-supabase">
-        <span>⚡</span> Supabase 資料庫架構
-      </button>
-    </nav>
   </div>
 
   <!-- 主內容容器 (支援手機與電腦版型) -->

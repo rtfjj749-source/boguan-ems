@@ -4318,6 +4318,12 @@ function setupTabs() {
       tabBtns.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
 
+      // 讓當前選中的頁籤在水平滑動列中自動置中
+      btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+
+      // 切換頁籤時自動平滑回頂部，免去手動滑上滑下
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+
       const targetTab = btn.getAttribute('data-tab');
       window.location.hash = targetTab;
       document.querySelectorAll('.tab-content').forEach(c => {
