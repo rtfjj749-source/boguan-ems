@@ -3705,7 +3705,7 @@ function setupPunchEvents() {
   });
 
   // 檢查 URL query 是否為掃碼直連打卡
-  if (window.location.search.includes('action=checkin')) {
+  if (window.location?.search?.includes('action=checkin')) {
     setTimeout(() => {
       const cur = getCurrentMember();
       showToast(`👋 歡迎 ${cur.name} 抵達博館分隊！請點擊按鈕完成出入登記`, '📍');
@@ -4648,8 +4648,6 @@ function setupModals() {
     if (isNaN(patientCount) || patientCount < 0) {
       patientCount = isIdle ? 0 : 1;
     }
-
-    const dispatchDate = document.getElementById('inputDispatchDate')?.value.trim() || getCurrentRocDate();
 
     const editId = modalDispatch.getAttribute('data-edit-id');
     if (editId) {
