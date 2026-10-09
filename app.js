@@ -1,4 +1,4 @@
-import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS, SQUAD_CONFIG } from './data.js?v=20261008_v24';
+import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS, SQUAD_CONFIG } from './data.js?v=20261008_v25';
 
 // ==========================================
 // 1. 資料持久化管理 (LocalStorage)
@@ -428,30 +428,36 @@ function updateDutyHero() {
   const statusText = document.getElementById('dutyStatusText');
   const btnIn = document.getElementById('btnPunchIn');
   const btnOut = document.getElementById('btnPunchOut');
-  const boxIn = document.getElementById('boxBackfillInTrigger');
-  const boxOut = document.getElementById('boxAdjustOutTrigger');
   
   // 檢查當前隊員是否在隊協勤中
   const isOnDuty = activeDuty && activeDuty.memberId === cur.id;
 
   if (isOnDuty) {
     statusPill.className = 'status-pill';
-    statusText.textContent = `協勤值勤中 (博館駐地)`;
-    btnIn.disabled = true;
-    btnOut.disabled = false;
-    btnIn.classList.add('disabled');
-    btnOut.classList.remove('disabled');
-    if (boxIn) boxIn.style.opacity = '0.5';
-    if (boxOut) boxOut.style.opacity = '1';
+    statusText.textContent = `協勤值勤中 (已於 ${activeDuty.timeStr} 簽到)`;
+    if (btnIn) {
+      btnIn.disabled = true;
+      btnIn.classList.add('disabled');
+      btnIn.style.opacity = '0.5';
+    }
+    if (btnOut) {
+      btnOut.disabled = false;
+      btnOut.classList.remove('disabled');
+      btnOut.style.opacity = '1';
+    }
   } else {
     statusPill.className = 'status-pill offline';
     statusText.textContent = `尚未簽到 (離隊)`;
-    btnIn.disabled = false;
-    btnOut.disabled = true;
-    btnIn.classList.remove('disabled');
-    btnOut.classList.add('disabled');
-    if (boxIn) boxIn.style.opacity = '1';
-    if (boxOut) boxOut.style.opacity = '1';
+    if (btnIn) {
+      btnIn.disabled = false;
+      btnIn.classList.remove('disabled');
+      btnIn.style.opacity = '1';
+    }
+    if (btnOut) {
+      btnOut.disabled = false; // 允許未在隊時點擊補登簽退
+      btnOut.classList.remove('disabled');
+      btnOut.style.opacity = '1';
+    }
     document.getElementById('dutyTimerDisplay').textContent = '00:00:00';
   }
 }
@@ -2468,241 +2474,174 @@ function setupPunchEvents() {
   const btnIn = document.getElementById('btnPunchIn');
   const btnOut = document.getElementById('btnPunchOut');
 
-  // 一鍵到隊簽到 (當前時間)
+  const modalIn = document.getElementById('modalPunchInConfirm');
+  const formIn = document.getElementById('formPunchInConfirm');
+  const inputInName = document.getElementById('inputPunchInMemberName');
+  const inputInDate = document.getElementById('inputPunchInDate');
+  const inputInTime = document.getElementById('inputPunchInTime');
+  const inputInNote = document.getElementById('inputPunchInNote');
+
+  const modalOut = document.getElementById('modalPunchOutConfirm');
+  const formOut = document.getElementById('formPunchOutConfirm');
+  const inputOutName = document.getElementById('inputPunchOutMemberName');
+  const boxNormal = document.getElementById('boxPunchOutNormalFields');
+  const boxBackfill = document.getElementById('boxPunchOutBackfillFields');
+  const displayInTime = document.getElementById('inputPunchOutSignInDisplay');
+  const inputOutTime = document.getElementById('inputPunchOutTime');
+  const inputBInTime = document.getElementById('inputPunchOutBackfillInTime');
+  const inputBOutTime = document.getElementById('inputPunchOutBackfillOutTime');
+  const inputOutNote = document.getElementById('inputPunchOutNote');
+
+  // 1. 點擊【📍 簽到】按鈕：彈出簽到確認視窗 (預設當前日期時間，可手動修改)
   btnIn?.addEventListener('click', () => {
-    performPunchIn();
+    if (!isLoggedIn()) {
+      showToast('請先登入義消隊員帳號！', '⚠️');
+      document.getElementById('modalLogin')?.classList.add('open');
+      return;
+    }
+
+    const cur = getCurrentMember();
+    const now = new Date();
+    const nowTimeStr = now.toTimeString().substring(0, 5);
+
+    if (inputInName) inputInName.value = `${cur.name} (${cur.level || 'EMT'})`;
+    if (inputInDate) inputInDate.value = getCurrentRocDate();
+    if (inputInTime) inputInTime.value = nowTimeStr;
+    if (inputInNote) inputInNote.value = '正常到隊協勤';
+
+    modalIn?.classList.add('open');
   });
 
-  // 一鍵簽退離開 (當前時間)
+  // 簽到表單提交
+  formIn?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!isLoggedIn()) return;
+    const timeVal = inputInTime?.value || '';
+    const dateVal = inputInDate?.value || getCurrentRocDate();
+    const noteVal = inputInNote?.value || '正常到隊協勤';
+
+    performPunchIn(timeVal, noteVal, dateVal);
+    modalIn?.classList.remove('open');
+  });
+
+  // 2. 點擊【🏁 簽退】按鈕：彈出簽退確認視窗 (預設當前日期時間，可手動修改，即時試算時數)
+  function updatePunchOutPreview() {
+    let inMin = 0;
+    let outMin = 0;
+
+    if (activeDuty) {
+      inMin = timeToMinutes(activeDuty.timeStr);
+      outMin = timeToMinutes(inputOutTime?.value || '00:00');
+    } else {
+      inMin = timeToMinutes(inputBInTime?.value || '18:00');
+      outMin = timeToMinutes(inputBOutTime?.value || '22:00');
+    }
+
+    let diff = outMin - inMin;
+    if (diff < 0) diff += 24 * 60; // 跨午夜
+    const hrs = Math.max(0.5, Math.round((diff / 60) * 10) / 10);
+
+    const hrsEl = document.getElementById('previewPunchOutHours');
+    const mealEl = document.getElementById('previewPunchOutMeal');
+
+    if (hrsEl) hrsEl.textContent = `${hrs.toFixed(1)} hr`;
+    if (mealEl) {
+      if (hrs >= 4.0) {
+        mealEl.textContent = '✅ 符合誤餐費資格 ($100)';
+        mealEl.style.color = '#34d399';
+      } else {
+        mealEl.textContent = '未達 4 小時 (無誤餐費)';
+        mealEl.style.color = '#f87171';
+      }
+    }
+  }
+
+  inputOutTime?.addEventListener('input', updatePunchOutPreview);
+  inputBInTime?.addEventListener('input', updatePunchOutPreview);
+  inputBOutTime?.addEventListener('input', updatePunchOutPreview);
+
   btnOut?.addEventListener('click', () => {
-    performPunchOut();
-  });
-
-  // Modal 5: 補登到隊時間 (限當日 6 小時內)
-  const btnOpenBackfill = document.getElementById('btnOpenBackfillIn');
-  const modalBackfill = document.getElementById('modalBackfillIn');
-  const formBackfill = document.getElementById('formBackfillIn');
-  const inputBackfillTime = document.getElementById('inputBackfillTime');
-
-  btnOpenBackfill?.addEventListener('click', () => {
-    const cur = getCurrentMember();
-    const now = new Date();
-    const nowMin = now.getHours() * 60 + now.getMinutes();
-    const minAllowedMin = Math.max(0, nowMin - 360); // 嚴格限制：最多往回 6 小時
-    const minTimeStr = minutesToTime(minAllowedMin);
-    const maxTimeStr = minutesToTime(nowMin);
-
-    const nameEl = document.getElementById('inputBackfillMemberName');
-    if (nameEl) nameEl.value = cur.name;
-    const dateEl = document.getElementById('inputBackfillDate');
-    if (dateEl) dateEl.value = `${getCurrentRocDate()} (今日)`;
-
-    if (inputBackfillTime) {
-      inputBackfillTime.value = maxTimeStr;
-      inputBackfillTime.min = minTimeStr;
-      inputBackfillTime.max = maxTimeStr;
-    }
-    const hintEl = document.getElementById('backfillTimeLimitHint');
-    if (hintEl) {
-      hintEl.textContent = `※ 依分隊規定限當日 6 小時內：最早可補選 ${minTimeStr}，最晚為當前時間 ${maxTimeStr}`;
-    }
-    modalBackfill?.classList.add('open');
-  });
-
-  formBackfill?.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const chosenVal = inputBackfillTime?.value;
-    if (!chosenVal) return;
-
-    const now = new Date();
-    const nowMin = now.getHours() * 60 + now.getMinutes();
-    const minAllowedMin = Math.max(0, nowMin - 360);
-    const chosenMin = timeToMinutes(chosenVal);
-
-    if (chosenMin > nowMin) {
-      alert('【時間無效】到隊時間不可超過當前系統時間！');
-      return;
-    }
-    if (chosenMin < minAllowedMin) {
-      alert(`【超出校正範圍】依分隊規定，補登到隊時間最多僅限往回校正當日 6 小時內（最早可選 ${minutesToTime(minAllowedMin)}）！`);
-      return;
-    }
-
-    const reasonEl = document.querySelector('input[name="backfillReason"]:checked');
-    const reason = reasonEl ? reasonEl.value : '忙碌忘了打卡';
-
-    performPunchIn(chosenVal, reason);
-    modalBackfill?.classList.remove('open');
-  });
-
-  // Modal 6: 自訂離隊時間簽退 (避免返家後才想起忘記簽退)
-  const btnOpenAdjust = document.getElementById('btnOpenAdjustOut');
-  const modalAdjust = document.getElementById('modalAdjustOut');
-  const formAdjust = document.getElementById('formAdjustOut');
-  const inputAdjustOut = document.getElementById('inputAdjustOutTime');
-
-  function updateAdjustOutPreview() {
-    if (!activeDuty || !inputAdjustOut) return;
-    const inMin = timeToMinutes(activeDuty.timeStr);
-    const outMin = timeToMinutes(inputAdjustOut.value);
-    let diff = outMin - inMin;
-    if (diff < 0) diff += 24 * 60;
-    const hrs = Math.max(0.5, Math.round((diff / 60) * 10) / 10);
-    const hrsEl = document.getElementById('previewAdjustHours');
-    if (hrsEl) hrsEl.textContent = `${hrs.toFixed(1)} hr`;
-    const mealEl = document.getElementById('previewAdjustMeal');
-    if (mealEl) {
-      if (hrs >= 4.0) {
-        mealEl.textContent = '✅ 符合誤餐費資格 ($100)';
-        mealEl.style.color = '#34d399';
-      } else {
-        mealEl.textContent = '未達 4 小時 (無誤餐費)';
-        mealEl.style.color = '#f87171';
-      }
-    }
-  }
-
-  btnOpenAdjust?.addEventListener('click', () => {
     if (!isLoggedIn()) {
-      showToast('請先登入義消同仁帳號！', '⚠️');
+      showToast('請先登入義消隊員帳號！', '⚠️');
       document.getElementById('modalLogin')?.classList.add('open');
       return;
     }
 
-    // 若當前並未在隊簽到，自動引導至「補登完整協勤紀錄」
-    if (!activeDuty) {
-      openCompleteBackfillModal();
-      return;
-    }
-
-    const now = new Date();
-    const nowMin = now.getHours() * 60 + now.getMinutes();
-    const maxTimeStr = minutesToTime(nowMin);
-
-    const signInDisplay = document.getElementById('inputAdjustOutSignInTime');
-    if (signInDisplay) {
-      signInDisplay.value = `${activeDuty.dateStr} 📍 ${activeDuty.timeStr}`;
-    }
-    if (inputAdjustOut) {
-      inputAdjustOut.value = maxTimeStr;
-    }
-    const hintEl = document.getElementById('adjustOutTimeLimitHint');
-    if (hintEl) {
-      hintEl.textContent = `※ 系統已載入您本日簽到時間 ${activeDuty.timeStr}，請填寫您實際離開分隊時間。`;
-    }
-    updateAdjustOutPreview();
-    modalAdjust?.classList.add('open');
-  });
-
-  inputAdjustOut?.addEventListener('input', updateAdjustOutPreview);
-
-  formAdjust?.addEventListener('submit', (e) => {
-    e.preventDefault();
-    if (!activeDuty || !inputAdjustOut) return;
-    const chosenVal = inputAdjustOut.value;
-    const now = new Date();
-    const nowMin = now.getHours() * 60 + now.getMinutes();
-    const inMin = timeToMinutes(activeDuty.timeStr);
-    const chosenMin = timeToMinutes(chosenVal);
-
-    if (chosenMin < inMin) {
-      if (!confirm(`⚠️ 您填寫的離隊時間 (${chosenVal}) 早於簽到時間 (${activeDuty.timeStr})，請問是否為跨夜班次？確認請按確定，若非跨夜請重新選擇！`)) {
-        return;
-      }
-    }
-
-    const reasonEl = document.querySelector('input[name="adjustOutReason"]:checked');
-    const reason = reasonEl ? reasonEl.value : '返家後才想起忘記簽退';
-
-    performPunchOut(chosenVal, reason);
-    modalAdjust?.classList.remove('open');
-  });
-
-  // Modal 8: 返家補登今日完整協勤紀錄 (同時輸入到隊與離隊時間)
-  const btnOpenComp = document.getElementById('btnOpenCompleteBackfill');
-  const modalComp = document.getElementById('modalCompleteBackfill');
-  const formComp = document.getElementById('formCompleteBackfill');
-  const inputCompIn = document.getElementById('inputCompBackfillInTime');
-  const inputCompOut = document.getElementById('inputCompBackfillOutTime');
-
-  function openCompleteBackfillModal() {
-    if (!isLoggedIn()) {
-      showToast('請先登入義消同仁帳號！', '⚠️');
-      document.getElementById('modalLogin')?.classList.add('open');
-      return;
-    }
     const cur = getCurrentMember();
-    const nameEl = document.getElementById('inputCompBackfillMemberName');
-    const dateEl = document.getElementById('inputCompBackfillDate');
-    if (nameEl) nameEl.value = cur.name;
-    if (dateEl) dateEl.value = `${getCurrentRocDate()} (今日)`;
+    const now = new Date();
+    const nowTimeStr = now.toTimeString().substring(0, 5);
 
-    updateCompPreview();
-    modalComp?.classList.add('open');
-  }
+    if (inputOutName) inputOutName.value = `${cur.name} (${cur.level || 'EMT'})`;
 
-  function updateCompPreview() {
-    if (!inputCompIn || !inputCompOut) return;
-    const inMin = timeToMinutes(inputCompIn.value);
-    const outMin = timeToMinutes(inputCompOut.value);
-    let diff = outMin - inMin;
-    if (diff < 0) diff += 24 * 60;
-    const hrs = Math.max(0.5, Math.round((diff / 60) * 10) / 10);
-    const hrsEl = document.getElementById('previewCompHours');
-    if (hrsEl) hrsEl.textContent = `${hrs.toFixed(1)} hr`;
-    const mealEl = document.getElementById('previewCompMeal');
-    if (mealEl) {
-      if (hrs >= 4.0) {
-        mealEl.textContent = '✅ 符合誤餐費資格 ($100)';
-        mealEl.style.color = '#34d399';
-      } else {
-        mealEl.textContent = '未達 4 小時 (無誤餐費)';
-        mealEl.style.color = '#f87171';
+    if (activeDuty) {
+      // 正常有簽到模式
+      if (boxNormal) boxNormal.style.display = 'block';
+      if (boxBackfill) boxBackfill.style.display = 'none';
+      if (displayInTime) displayInTime.value = `${activeDuty.dateStr} 📍 ${activeDuty.timeStr}`;
+      if (inputOutTime) inputOutTime.value = nowTimeStr;
+      if (inputOutNote) inputOutNote.value = '協勤完畢離隊';
+    } else {
+      // 尚未簽到 (返家補登模式)
+      if (boxNormal) boxNormal.style.display = 'none';
+      if (boxBackfill) boxBackfill.style.display = 'block';
+      if (inputBInTime) {
+        // 預設 4 小時前
+        const fourHrsAgo = Math.max(0, now.getHours() * 60 + now.getMinutes() - 240);
+        inputBInTime.value = minutesToTime(fourHrsAgo);
       }
+      if (inputBOutTime) inputBOutTime.value = nowTimeStr;
+      if (inputOutNote) inputOutNote.value = '返家後才想起補簽到退';
     }
-  }
 
-  btnOpenComp?.addEventListener('click', openCompleteBackfillModal);
-  inputCompIn?.addEventListener('input', updateCompPreview);
-  inputCompOut?.addEventListener('input', updateCompPreview);
+    updatePunchOutPreview();
+    modalOut?.classList.add('open');
+  });
 
-  formComp?.addEventListener('submit', (e) => {
+  // 簽退表單提交
+  formOut?.addEventListener('submit', (e) => {
     e.preventDefault();
     if (!isLoggedIn()) return;
     const cur = getCurrentMember();
-    const inTime = inputCompIn.value;
-    const outTime = inputCompOut.value;
-    const reason = document.getElementById('inputCompBackfillReason')?.value || '返家後才想起忘記打卡';
+    const noteVal = inputOutNote?.value || '協勤完畢離隊';
 
-    const inMin = timeToMinutes(inTime);
-    const outMin = timeToMinutes(outTime);
-    let diff = outMin - inMin;
-    if (diff < 0) diff += 24 * 60;
-    const hrs = Math.max(0.5, Math.round((diff / 60) * 10) / 10);
+    if (activeDuty) {
+      const chosenOutTime = inputOutTime?.value || '';
+      performPunchOut(chosenOutTime, noteVal);
+    } else {
+      // 補登模式送出
+      const inTime = inputBInTime?.value || '18:00';
+      const outTime = inputBOutTime?.value || '22:00';
+      const inMin = timeToMinutes(inTime);
+      const outMin = timeToMinutes(outTime);
+      let diff = outMin - inMin;
+      if (diff < 0) diff += 24 * 60;
+      const hrs = Math.max(0.5, Math.round((diff / 60) * 10) / 10);
 
-    const newAtt = {
-      id: `att-${Date.now()}`,
-      memberId: cur.id,
-      memberName: cur.name,
-      date: getCurrentRocDate(),
-      signIn: inTime,
-      signOut: outTime,
-      hours: hrs,
-      dispatches: 1,
-      patients: 1,
-      note: `返家補登協勤 (${reason})`
-    };
+      const newAtt = {
+        id: `att-${Date.now()}`,
+        memberId: cur.id,
+        memberName: cur.name,
+        date: getCurrentRocDate(),
+        signIn: inTime,
+        signOut: outTime,
+        hours: hrs,
+        dispatches: 1,
+        patients: 1,
+        note: noteVal
+      };
 
-    attendance.unshift(newAtt);
-    Store.set('attendance', attendance);
+      attendance.unshift(newAtt);
+      Store.set('attendance', attendance);
 
-    cur.totalHours = (Number(cur.totalHours) || 0) + hrs;
-    Store.set('members', members);
+      cur.totalHours = (Number(cur.totalHours) || 0) + hrs;
+      Store.set('members', members);
 
-    modalComp?.classList.remove('open');
-    updateAllViews();
-    playFeedbackSound('success');
-    showToast(`補登完成！已成功為【${cur.name}】記錄本日協勤 ${hrs} 小時（${inTime} 至 ${outTime}）！`, '🎉');
+      updateAllViews();
+      playFeedbackSound('success');
+      showToast(`補登簽退完成！已為【${cur.name}】記錄協勤 ${hrs} 小時（${inTime} ~ ${outTime}）！`, '🎉');
+    }
+
+    modalOut?.classList.remove('open');
   });
 
   // Modal 7: 值班台專屬打卡 QR Code
