@@ -149,3 +149,13 @@ VALUES
 ('m11', '黃威傑', 'B121710361', '救護義消隊員', 'EMT-2', '👨‍🚒', '0938-555666', '110年10月', 210.0, 90, 2, 11, 14),
 ('m12', '陳善君', 'A229489257', '救護義消隊員', 'EMT-2', '👩‍🚒', '0939-777111', '111年11月', 195.0, 82, 1, 9, 12)
 ON CONFLICT (id) DO NOTHING;
+
+-- ==============================================================================
+-- 9. 啟用 Supabase Realtime 即時推播廣播 (值班台免按 F5 即時連動)
+-- ==============================================================================
+-- 執行以下指令可將簽到、排班與出勤表加入 Supabase 官方即時廣播管道：
+-- ALTER PUBLICATION supabase_realtime ADD TABLE public.attendance;
+-- ALTER PUBLICATION supabase_realtime ADD TABLE public.shifts;
+-- ALTER PUBLICATION supabase_realtime ADD TABLE public.dispatch_records;
+-- ALTER PUBLICATION supabase_realtime ADD TABLE public.user_accounts;
+

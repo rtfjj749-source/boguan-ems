@@ -189,6 +189,7 @@ function initSupabase() {
       syncAttendanceFromSupabase();
       syncDispatchesFromSupabase();
       syncUserAccountsFromSupabase();
+      startAutoBackgroundSync();
       return true;
     } catch (e) {
       console.warn('Supabase init failed:', e);
@@ -282,6 +283,13 @@ async function syncAttendanceFromSupabase() {
   try {
     const { data, error } = await supabaseClient.from('attendance').select('*').order('attendance_date', { ascending: false });
     if (!error && data && data.length > 0) {
+      const todayStr = getCurrentRocDate();
+      const prevActiveNames = new Set(
+        attendance
+          .filter(a => normalizeRocDateStr(a.date) === normalizeRocDateStr(todayStr) && (!a.signOut || a.signOut === '' || a.signOut === '—'))
+          .map(a => a.memberName)
+      );
+
       attendance = data.map(r => ({
         id: r.id,
         memberId: r.member_id,
@@ -298,6 +306,17 @@ async function syncAttendanceFromSupabase() {
       renderRecentAttendance();
       updateTodayStatus();
       updateDutyHero();
+
+      // 跨裝置即時提醒：若有新義消同仁在其他裝置打卡到隊，值班台電腦自動跳出即時通知
+      if (prevActiveNames.size > 0) {
+        const currentActive = attendance.filter(a => normalizeRocDateStr(a.date) === normalizeRocDateStr(todayStr) && (!a.signOut || a.signOut === '' || a.signOut === '—'));
+        const newlyArrived = currentActive.filter(a => !prevActiveNames.has(a.memberName));
+        if (newlyArrived.length > 0) {
+          const names = newlyArrived.map(a => a.memberName).join('、');
+          showToast(`🔔 義消同仁【${names}】已於手機完成簽到，在隊名冊已同步更新！`, '👨‍🚒');
+          playFeedbackSound('success');
+        }
+      }
     }
   } catch (e) {
     console.warn('Sync attendance error:', e);
@@ -526,6 +545,36 @@ function setupSupabaseRealtime() {
   } catch (e) {
     console.warn('Realtime subscription error:', e);
   }
+}
+
+// 全自動背景靜默同步引擎 (確保跨裝置手機簽到後，警消電腦完全免按 F5 即時更新)
+let backgroundSyncTimer = null;
+function startAutoBackgroundSync() {
+  if (backgroundSyncTimer) clearInterval(backgroundSyncTimer);
+
+  // 每 8 秒背景靜默同步最新簽到退與出勤狀態
+  backgroundSyncTimer = setInterval(() => {
+    if (supabaseClient) {
+      syncAttendanceFromSupabase();
+      syncDispatchesFromSupabase();
+    }
+  }, 8000);
+
+  // 當使用者點回瀏覽器分頁、視窗獲得焦點、或螢幕喚醒時，立即自動觸發一次同步
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && supabaseClient) {
+      syncAttendanceFromSupabase();
+      syncDispatchesFromSupabase();
+      syncFromSupabase();
+    }
+  });
+
+  window.addEventListener('focus', () => {
+    if (supabaseClient) {
+      syncAttendanceFromSupabase();
+      syncDispatchesFromSupabase();
+    }
+  });
 }
 
 // 將排班變更推至 Supabase
