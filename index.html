@@ -522,6 +522,9 @@
           </div>
 
           <div class="roster-hero-actions">
+            <button id="btnOpenAddMemberModal" type="button" class="btn-primary" style="background: linear-gradient(135deg, #0284c7, #06b6d4); border: none; font-size: 0.85rem; padding: 0.55rem 1rem; display: none;">
+              <span>➕ 新增義消隊員</span>
+            </button>
             <button id="btnExportRosterExcel" type="button" class="btn-primary" style="background: linear-gradient(135deg, #10b981, #059669); border: none; font-size: 0.85rem; padding: 0.55rem 1rem;">
               <span>📥 匯出人員名冊 (Excel)</span>
             </button>
@@ -638,6 +641,13 @@
           <button type="button" class="roster-chip cert" data-cert="T2">🛡️ EMT-2 (T2)</button>
           <button type="button" class="roster-chip cert" data-cert="T1">🔰 EMT-1 (T1)</button>
           <button type="button" class="roster-chip cert" data-cert="待訓">⏳ 待訓/新進</button>
+        </div>
+
+        <div class="roster-filter-row">
+          <span class="roster-filter-label">在隊狀態：</span>
+          <button type="button" class="roster-chip status active" data-status="active">現職在隊 <span class="roster-chip-count" id="countChipActive">54</span></button>
+          <button type="button" class="roster-chip status" data-status="all">全部名冊 <span class="roster-chip-count" id="countChipTotalAll">54</span></button>
+          <button type="button" class="roster-chip status" data-status="retired" style="color: #fca5a5;">🚪 已退隊封存 <span class="roster-chip-count" id="countChipRetired" style="background: rgba(239,68,68,0.25); color: #fca5a5;">0</span></button>
         </div>
       </div>
 
@@ -1972,6 +1982,159 @@
         <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.25rem;">
           <button type="button" class="btn-secondary" data-close-modal="modalChangePassword">取消</button>
           <button type="submit" class="btn-primary">確認變更密碼</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL 8: 新增 / 編輯義消隊員資料 (承辦人專屬) ==================== -->
+  <div id="modalMemberEdit" class="modal-overlay">
+    <div class="modal-box" style="max-width: 540px;">
+      <div class="modal-title-row">
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <span style="font-size: 1.3rem;" id="modalMemberEditIcon">➕</span>
+          <h3 id="modalMemberEditTitle" style="font-size: 1.15rem; font-weight: 800;">新增義消隊員</h3>
+        </div>
+        <button type="button" class="btn-close-modal" data-close-modal="modalMemberEdit">&times;</button>
+      </div>
+
+      <form id="formMemberEdit">
+        <input type="hidden" id="inputMemberEditId" value="">
+        <div class="grid-2">
+          <div class="form-group">
+            <label>中文姓名 <span style="color: #ef4444;">*</span></label>
+            <input type="text" id="inputMemberName" class="form-input" required placeholder="例如: 陳大明">
+          </div>
+          <div class="form-group">
+            <label>身分證字號 <span style="color: #ef4444;">*</span></label>
+            <input type="text" id="inputMemberIdNo" class="form-input" required placeholder="例如: B123456789 (首字大寫)" maxlength="10">
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="form-group">
+            <label>所屬編制分組 <span style="color: #ef4444;">*</span></label>
+            <select id="inputMemberSquad" class="form-input" required>
+              <option value="分隊幹部">🏛️ 分隊幹部</option>
+              <option value="第一小隊" selected>🚒 第一小隊</option>
+              <option value="第二小隊">🚒 第二小隊</option>
+              <option value="第三小隊">🚒 第三小隊</option>
+              <option value="中區">🚒 中區</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>隊部職務 <span style="color: #ef4444;">*</span></label>
+            <select id="inputMemberSquadRole" class="form-input" required>
+              <option value="隊員" selected>隊員</option>
+              <option value="幹部">幹部</option>
+              <option value="小隊長">小隊長</option>
+              <option value="副小隊長">副小隊長</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="form-group">
+            <label>EMT 救護證照等級 <span style="color: #ef4444;">*</span></label>
+            <select id="inputMemberLevel" class="form-input" required>
+              <option value="EMT-P (TP)">🌟 EMT-P (TP) 高級救護技術員</option>
+              <option value="EMT-2" selected>🛡️ EMT-2 中級救護技術員</option>
+              <option value="EMT-1">🔰 EMT-1 初級救護技術員</option>
+              <option value="待訓 (新進)">⏳ 待訓 (新進隊員)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>加入隊部年月</label>
+            <input type="text" id="inputMemberJoined" class="form-input" placeholder="例如: 115年10月">
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="form-group">
+            <label>連絡電話 / 手機</label>
+            <input type="tel" id="inputMemberPhone" class="form-input" placeholder="例如: 0912-345678">
+          </div>
+          <div class="form-group">
+            <label>頭像圖示</label>
+            <select id="inputMemberAvatar" class="form-input">
+              <option value="👨‍🚒">👨‍🚒 男義消</option>
+              <option value="👩‍🚒">👩‍🚒 女義消</option>
+              <option value="👨‍⚕️">👨‍⚕️ 救護員 (男)</option>
+              <option value="👩‍⚕️">👩‍⚕️ 救護員 (女)</option>
+              <option value="⭐">⭐ 星星徽章</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 0.65rem 0.85rem; font-size: 0.78rem; color: #bae6fd; margin-top: 0.5rem;">
+          💡 <strong>登入帳號提示</strong>：新進隊員建立後，系統將自動以其「<strong>中文姓名</strong>」建立登入帳號，預設密碼為「<code>1234</code>」，首次登入時會提示其設定專屬密碼。
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.25rem;">
+          <button type="button" class="btn-secondary" data-close-modal="modalMemberEdit">取消</button>
+          <button type="submit" class="btn-primary" id="btnSubmitMemberEdit" style="background: linear-gradient(135deg, #0284c7, #06b6d4); border: none; font-weight: 700;">
+            💾 儲存隊員資料
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL 9: 辦理退隊 / 離隊封存確認視窗 (承辦人專屬) ==================== -->
+  <div id="modalMemberRetire" class="modal-overlay">
+    <div class="modal-box" style="max-width: 480px;">
+      <div class="modal-title-row">
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <span style="font-size: 1.3rem;">🚪</span>
+          <h3 style="font-size: 1.15rem; font-weight: 800; color: #f87171;">辦理義消同仁退隊 / 離隊封存</h3>
+        </div>
+        <button type="button" class="btn-close-modal" data-close-modal="modalMemberRetire">&times;</button>
+      </div>
+
+      <form id="formMemberRetire">
+        <input type="hidden" id="inputRetireMemberId" value="">
+        <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem;">
+          <div style="font-size: 0.95rem; font-weight: 700; color: #fca5a5; margin-bottom: 0.35rem;">
+            即將辦理退隊隊員：<span id="retireMemberNameDisplay" style="color: #ffffff; text-decoration: underline;"></span>
+          </div>
+          <div style="font-size: 0.76rem; color: #fecaca; line-height: 1.5;">
+            ⚠️ 退隊後該隊員將自動自「排班預約、協勤打卡、救護出勤登記」選單中移除，以防誤選；<strong>過去所有協勤時數與救護出勤戰報歷史紀錄將完整永久保留</strong>，日後如有需要亦可隨時復隊。
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>退隊生效日期 <span style="color: #ef4444;">*</span></label>
+          <input type="text" id="inputRetireDate" class="form-input" required placeholder="例如: 115-10-09">
+        </div>
+
+        <div class="form-group">
+          <label>退隊事由說明</label>
+          <select id="inputRetireReason" class="form-input">
+            <option value="生涯規劃">生涯規劃</option>
+            <option value="工作職涯異動">工作職涯異動</option>
+            <option value="搬遷居所出境">搬遷居所 / 跨縣市搬遷</option>
+            <option value="家庭照顧因素">家庭照顧因素</option>
+            <option value="個人健康因素">個人健康因素</option>
+            <option value="年齡屆退">年齡屆退 / 榮譽退隊</option>
+            <option value="其他原因">其他原因</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>詳細備註 (選填)</label>
+          <input type="text" id="inputRetireNote" class="form-input" placeholder="例如: 轉至南屯分隊、申請停權或離隊公文案號...">
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.25rem;">
+          <button type="button" id="btnDeleteMemberPermanently" class="btn-sm-action danger" style="padding: 0.45rem 0.85rem; font-size: 0.75rem;" title="若是誤建的測試人員，可直接徹底刪除">
+            🗑️ 徹底刪除此帳號 (測試用)
+          </button>
+          <div style="display: flex; gap: 0.75rem;">
+            <button type="button" class="btn-secondary" data-close-modal="modalMemberRetire">取消</button>
+            <button type="submit" class="btn-primary" style="background: linear-gradient(135deg, #ef4444, #dc2626); border: none; font-weight: 700;">
+              🚪 確認辦理退隊封存
+            </button>
+          </div>
         </div>
       </form>
     </div>
