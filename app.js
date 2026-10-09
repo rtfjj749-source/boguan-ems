@@ -456,22 +456,99 @@ function updateDutyHero() {
   }
 }
 
-// 本月個人即時戰報試算
-function updatePersonalSummary() {
-  const cur = getCurrentMember();
-  // 篩選本月 (115-10) 簽到
-  const myMonthlyAtt = attendance.filter(a => a.memberName === cur.name && a.date.startsWith('115-10'));
-  const totalHours = myMonthlyAtt.reduce((sum, a) => sum + (Number(a.hours) || 0), 0);
-  const totalDispatches = myMonthlyAtt.reduce((sum, a) => sum + (Number(a.dispatches) || 0), 0);
-  const totalPatients = myMonthlyAtt.reduce((sum, a) => sum + (Number(a.patients) || 0), 0);
-  // 誤餐費試算：每次出勤達 4 小時發給 $100
-  const eligibleCount = myMonthlyAtt.filter(a => Number(a.hours) >= 4).length;
-  const subsidyAmount = eligibleCount * 100;
+// 本日狀況即時統計 (在隊義消名字、出勤趟數)
+function updateTodayStatus() {
+  const todayStr = getCurrentRocDate();
+  const dateEl = document.getElementById('todayStatusDate');
+  if (dateEl) dateEl.textContent = todayStr;
 
-  document.getElementById('myMonthlyHours').textContent = totalHours.toFixed(1);
-  document.getElementById('myMonthlyDispatches').textContent = totalDispatches;
-  document.getElementById('myMealSubsidy').textContent = `$${subsidyAmount}`;
-  document.getElementById('myPatients').textContent = totalPatients;
+  // 1. 本日出勤案件
+  const todayDispatches = dispatches.filter(d => d.date === todayStr);
+  const todayDispCount = todayDispatches.length;
+  const dispEl = document.getElementById('todayDispatchCount');
+  if (dispEl) dispEl.textContent = todayDispCount;
+
+  // 2. 目前在隊義消
+  // 檢查 activeDuty (當前登入中隊員簽到) 以及 attendance 中日期為今天且未簽退的紀錄
+  const onDutyMap = new Map();
+
+  if (activeDuty && activeDuty.memberName) {
+    onDutyMap.set(activeDuty.memberName, {
+      memberName: activeDuty.memberName,
+      timeStr: activeDuty.timeStr || ''
+    });
+  }
+
+  attendance.forEach(a => {
+    if (a.date === todayStr && (!a.signOut || a.signOut === '—' || a.signOut === '')) {
+      if (!onDutyMap.has(a.memberName)) {
+        onDutyMap.set(a.memberName, {
+          memberName: a.memberName,
+          timeStr: a.signIn || ''
+        });
+      }
+    }
+  });
+
+  const onDutyList = Array.from(onDutyMap.values());
+  const onDutyCountEl = document.getElementById('todayOnDutyCount');
+  const badgeEl = document.getElementById('todayDutyCountBadge');
+  if (onDutyCountEl) onDutyCountEl.textContent = onDutyList.length;
+  if (badgeEl) {
+    badgeEl.textContent = `在隊 ${onDutyList.length} 人`;
+    badgeEl.style.background = onDutyList.length > 0 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.05)';
+    badgeEl.style.color = onDutyList.length > 0 ? '#34d399' : 'var(--text-dim)';
+  }
+
+  // 計算每位同仁今日出勤趟數
+  const memberDispCountMap = {};
+  todayDispatches.forEach(d => {
+    if (Array.isArray(d.memberNames)) {
+      d.memberNames.forEach(name => {
+        memberDispCountMap[name] = (memberDispCountMap[name] || 0) + 1;
+      });
+    } else if (Array.isArray(d.members)) {
+      d.members.forEach(name => {
+        memberDispCountMap[name] = (memberDispCountMap[name] || 0) + 1;
+      });
+    } else if (d.memberName) {
+      memberDispCountMap[d.memberName] = (memberDispCountMap[d.memberName] || 0) + 1;
+    }
+  });
+
+  // 渲染在隊名單與出勤趟數
+  const listEl = document.getElementById('todayOnDutyMemberList');
+  if (listEl) {
+    if (onDutyList.length === 0) {
+      listEl.innerHTML = `
+        <div style="font-size: 0.82rem; color: var(--text-dim); padding: 0.2rem 0;">
+          🕊️ 目前尚無同仁在隊待命 (點擊左側「簽到」即可到隊)
+        </div>
+      `;
+    } else {
+      listEl.innerHTML = onDutyList.map(item => {
+        const dCount = memberDispCountMap[item.memberName] || 0;
+        return `
+          <div style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #f8fafc; padding: 0.35rem 0.75rem; border-radius: 99px; font-size: 0.84rem; display: inline-flex; align-items: center; gap: 0.45rem;">
+            <span style="width: 7px; height: 7px; background: #10b981; border-radius: 50%; box-shadow: 0 0 6px #10b981;"></span>
+            <strong style="color: #ffffff;">${item.memberName}</strong>
+            <span style="font-size: 0.72rem; color: #fbbf24; background: rgba(0,0,0,0.35); padding: 1px 7px; border-radius: 99px; font-weight: 600;">
+              出勤 ${dCount} 趟
+            </span>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  const subtextEl = document.getElementById('todayDispatchSubtext');
+  if (subtextEl) {
+    subtextEl.textContent = todayDispCount > 0 ? `本日累計出勤 ${todayDispCount} 趟` : '本日尚無救護出勤案件';
+  }
+}
+
+function updatePersonalSummary() {
+  updateTodayStatus();
 }
 
 // 隊上近期簽到列表
@@ -3735,7 +3812,7 @@ function setupModals() {
     const newDisp = {
       id: `disp-${Date.now()}`,
       caseNo,
-      date: '115-10-07',
+      date: getCurrentRocDate(),
       vehicle,
       departureTime,
       returnTime,
