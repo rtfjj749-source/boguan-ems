@@ -1198,25 +1198,31 @@ function renderDispatchList() {
   const isAdm = isSuperAdmin();
 
   const filtered = dispatches.filter(d => {
+    if (!d) return false;
+    const v = d.vehicle || '';
     if (filterVehicle !== 'ALL') {
-      const v = d.vehicle || '';
       if (filterVehicle === '91+92' && !(v.includes('91+92') || v.includes('91-92') || (v.includes('91') && v.includes('92')))) return false;
       if (filterVehicle === '91' && (!v.includes('91') || (v.includes('92') && (v.includes('+') || v.includes('-'))))) return false;
       if (filterVehicle === '92' && (!v.includes('92') || (v.includes('91') && (v.includes('+') || v.includes('-'))))) return false;
     }
-    if (filterTag === 'ROSC' && (!d.isSpecial || !d.specialTag.includes('ROSC'))) return false;
-    if (filterTag === 'ECG' && !d.treatments.includes('12導程心電圖')) return false;
-    if (filterTag === 'CPR' && !d.treatments.includes('CPR')) return false;
-    if (filterTag === 'IV' && !d.treatments.includes('靜脈注射')) return false;
+    const treatments = Array.isArray(d.treatments) ? d.treatments : [];
+    if (filterTag === 'ROSC' && (!d.isSpecial || !(d.specialTag || '').includes('ROSC'))) return false;
+    if (filterTag === 'ECG' && !treatments.includes('12導程心電圖')) return false;
+    if (filterTag === 'CPR' && !treatments.includes('CPR')) return false;
+    if (filterTag === 'IV' && !treatments.includes('靜脈注射')) return false;
     if (filterTag === 'IDLE' && !d.isIdle) return false;
 
     if (search) {
+      const caseNo = (d.caseNo || '').toLowerCase();
+      const loc = (d.location || '').toLowerCase();
+      const membersList = Array.isArray(d.memberNames) ? d.memberNames : [];
+      const complaint = (d.chiefComplaint || '').toLowerCase();
       const match = 
-        d.caseNo.toLowerCase().includes(search) ||
-        d.location.toLowerCase().includes(search) ||
-        d.memberNames.some(n => n.toLowerCase().includes(search)) ||
-        d.treatments.some(t => t.toLowerCase().includes(search)) ||
-        (d.chiefComplaint && d.chiefComplaint.toLowerCase().includes(search));
+        caseNo.includes(search) ||
+        loc.includes(search) ||
+        membersList.some(n => (n || '').toLowerCase().includes(search)) ||
+        treatments.some(t => (t || '').toLowerCase().includes(search)) ||
+        complaint.includes(search);
       if (!match) return false;
     }
     return true;
@@ -1231,9 +1237,10 @@ function renderDispatchList() {
     const card = document.createElement('div');
     card.className = 'dispatch-card';
     const is9192 = d.vehicle && (d.vehicle.includes('91+92') || d.vehicle.includes('91-92') || (d.vehicle.includes('91') && d.vehicle.includes('92')));
-    const vehicleClass = is9192 ? 'v91-92' : (d.vehicle.includes('91') ? 'v91' : (d.vehicle.includes('92') ? 'v92' : 'v-ems'));
+    const vehicleClass = is9192 ? 'v91-92' : ((d.vehicle || '').includes('91') ? 'v91' : ((d.vehicle || '').includes('92') ? 'v92' : 'v-ems'));
 
-    const tagsHtml = d.treatments.map(t => {
+    const treatments = Array.isArray(d.treatments) ? d.treatments : [];
+    const tagsHtml = treatments.map(t => {
       const isSpecial = ['CPR', 'AED', '12導程心電圖', '靜脈注射'].includes(t);
       return `<span class="treatment-tag ${isSpecial ? 'highlight' : ''}">${t}</span>`;
     }).join('');
@@ -1241,28 +1248,22 @@ function renderDispatchList() {
     const isNoHosp = !d.hospital || d.hospital === '無' || d.isIdle || (d.resultType && (d.resultType.includes('空跑') || d.resultType === '拒送'));
     const hospDisplay = isNoHosp ? '<span style="color: var(--text-muted);">無 (未送醫)</span>' : d.hospital;
     const patCount = (d.patientCount !== undefined && d.patientCount !== null) ? d.patientCount : (d.isIdle ? 0 : 1);
+    const memberNamesList = Array.isArray(d.memberNames) ? d.memberNames : [];
 
-    const canEdit = canEditDispatch(d);
     card.setAttribute('data-id', d.id);
-    card.title = canEdit ? '點擊編輯此出勤案件內容' : '點擊檢視此出勤案件詳情 (唯讀)';
+    card.title = '點擊檢視或修改此出勤案件內容';
 
     card.innerHTML = `
       <div class="dispatch-header">
         <div style="display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap;">
-          <span class="case-id-tag">${d.caseNo}</span>
-          <span class="vehicle-pill ${vehicleClass}">${d.vehicle}</span>
-          <span style="font-weight: 600; font-size: 0.95rem;">${d.resultType}</span>
+          <span class="case-id-tag">${d.caseNo || '未填案號'}</span>
+          <span class="vehicle-pill ${vehicleClass}">${d.vehicle || '91'}</span>
+          <span style="font-weight: 600; font-size: 0.95rem;">${d.resultType || '送醫'}</span>
           ${d.specialTag ? `<span style="background: rgba(245,158,11,0.2); color: #fbbf24; border: 1px solid rgba(245,158,11,0.4); font-size: 0.75rem; padding: 2px 8px; border-radius: 99px; font-weight: 700;">${d.specialTag}</span>` : ''}
           <div style="display: inline-flex; gap: 6px; margin-left: auto;">
-            ${canEdit ? `
-              <button type="button" class="btn-admin-edit btn-admin-edit-disp" data-id="${d.id}" style="font-size: 0.75rem; padding: 4px 10px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 6px; cursor: pointer;" title="修改此出勤紀錄內容 (限本趟出勤義消或承辦人)">
-                ✏️ 修改
-              </button>
-            ` : `
-              <button type="button" class="btn-view-disp" data-id="${d.id}" style="font-size: 0.75rem; padding: 4px 10px; background: rgba(148, 163, 184, 0.15); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 6px; cursor: pointer;" title="點擊檢視案件詳情 (唯讀模式)">
-                👁️ 檢視
-              </button>
-            `}
+            <button type="button" class="btn-admin-edit btn-admin-edit-disp" data-id="${d.id}" style="font-size: 0.75rem; padding: 4px 10px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 6px; cursor: pointer;" title="修改此出勤紀錄內容">
+              ✏️ 修改 / 檢視
+            </button>
             ${isAdm ? `
               <button type="button" class="btn-admin-delete btn-admin-delete-disp" data-id="${d.id}" style="font-size: 0.75rem; padding: 4px 10px; background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 6px; cursor: pointer;" title="刪除此出勤紀錄">
                 🗑️ 刪除
@@ -1271,50 +1272,50 @@ function renderDispatchList() {
           </div>
         </div>
         <div style="font-size: 0.85rem; color: var(--text-muted);">
-          <span>📅 ${d.date}</span> ｜ <span>⏰ ${normalizeTimeStr(d.departureTime)} ~ ${normalizeTimeStr(d.returnTime)}</span>
+          <span>📅 ${d.date || ''}</span> ｜ <span>⏰ ${normalizeTimeStr(d.departureTime)} ~ ${normalizeTimeStr(d.returnTime)}</span>
         </div>
       </div>
 
       <div class="dispatch-meta">
-        <div class="dispatch-meta-item">📍 <strong>地點：</strong> ${d.location}</div>
+        <div class="dispatch-meta-item">📍 <strong>地點：</strong> ${d.location || '未填'}</div>
         <div class="dispatch-meta-item">🏥 <strong>送往：</strong> ${hospDisplay}</div>
         <div class="dispatch-meta-item">👥 <strong>送醫人數：</strong> <span style="color: #fbbf24; font-weight: 700;">${patCount} 人</span></div>
-        <div class="dispatch-meta-item">👨‍🚒 <strong>出勤義消：</strong> <span style="color: #38bdf8; font-weight: 700;">${d.memberNames.join('、')}${d.memberNames.length > 1 ? ` (共${d.memberNames.length}人)` : ''}</span></div>
+        <div class="dispatch-meta-item">👨‍🚒 <strong>出勤義消：</strong> <span style="color: #38bdf8; font-weight: 700;">${memberNamesList.join('、')}${memberNamesList.length > 1 ? ` (共${memberNamesList.length}人)` : ''}</span></div>
       </div>
 
       ${d.chiefComplaint ? `<div style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.25rem;">📝 <strong>傷病主訴：</strong>${d.chiefComplaint}</div>` : ''}
 
       <div class="treatment-tags">
         <strong style="font-size: 0.75rem; color: var(--text-dim); align-self: center;">現場處置：</strong>
-        ${tagsHtml}
+        ${tagsHtml || '<span style="color: var(--text-muted); font-size: 0.75rem;">無</span>'}
       </div>
     `;
 
     // 點擊卡片本體即可開啟案件（排除點擊刪除按鈕）
-    card.addEventListener('click', (e) => {
+    card.onclick = (e) => {
       if (e.target.closest('.btn-admin-delete-disp')) return;
       openEditDispatchModal(d.id);
-    });
+    };
 
     container.appendChild(card);
   });
 
   // 獨立按鈕點擊事件 (阻止冒泡以防重複觸發)
-  container.querySelectorAll('.btn-admin-edit-disp, .btn-view-disp').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+  container.querySelectorAll('.btn-admin-edit-disp').forEach(btn => {
+    btn.onclick = (e) => {
       e.stopPropagation();
       const id = e.currentTarget.getAttribute('data-id');
       openEditDispatchModal(id);
-    });
+    };
   });
 
   if (isAdm) {
     container.querySelectorAll('.btn-admin-delete-disp').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      btn.onclick = (e) => {
         e.stopPropagation();
         const id = e.currentTarget.getAttribute('data-id');
         deleteDispatchRecord(id);
-      });
+      };
     });
   }
 }
@@ -3910,6 +3911,7 @@ function setDispatchModalReadOnly(isReadOnly, caseVehicle = '91') {
     const parentLabel = cb.closest('label');
     if (parentLabel) {
       parentLabel.style.cursor = isReadOnly ? 'default' : 'pointer';
+      parentLabel.style.opacity = (isReadOnly && !cb.checked) ? '0.45' : '1';
     }
   });
 
@@ -3919,9 +3921,8 @@ function setDispatchModalReadOnly(isReadOnly, caseVehicle = '91') {
 
   if (btnSubmit) {
     btnSubmit.style.display = isReadOnly ? 'none' : 'inline-block';
-    if (!isReadOnly) {
-      btnSubmit.textContent = isEdit ? '💾 儲存修改內容' : '確認儲存並記錄';
-    }
+    btnSubmit.disabled = false;
+    btnSubmit.textContent = isEdit ? '💾 儲存修改內容' : '確認儲存並記錄';
   }
 
   if (btnClose) {
@@ -3930,15 +3931,15 @@ function setDispatchModalReadOnly(isReadOnly, caseVehicle = '91') {
 }
 
 function openEditDispatchModal(id) {
-  const d = dispatches.find(item => item.id === id);
+  const d = dispatches.find(item => String(item.id) === String(id));
   if (!d) return;
 
   const modal = document.getElementById('modalNewDispatch');
   if (!modal) return;
   modal.setAttribute('data-edit-id', d.id);
   
-  const canEdit = canEditDispatch(d);
-  setDispatchModalReadOnly(!canEdit, d.vehicle || '91');
+  // 開放同仁點擊並修改出勤案件
+  setDispatchModalReadOnly(false, d.vehicle || '91');
 
   if (document.getElementById('inputDispatchDate')) {
     document.getElementById('inputDispatchDate').value = d.date || getCurrentRocDate();
@@ -3959,7 +3960,7 @@ function openEditDispatchModal(id) {
   });
 
   initDispatchMemberSelect();
-  renderDispatchMemberChips(!canEdit);
+  renderDispatchMemberChips(false);
 
   document.getElementById('inputResultType').value = d.resultType || '送醫';
   const patInput = document.getElementById('inputPatientCount');
@@ -3985,15 +3986,20 @@ function openEditDispatchModal(id) {
 
   // checkboxes
   document.querySelectorAll('input[name="treatment"]').forEach(cb => {
-    cb.checked = d.treatments && d.treatments.includes(cb.value);
+    cb.checked = Array.isArray(d.treatments) && d.treatments.includes(cb.value);
+    cb.disabled = false;
     const parentLabel = cb.closest('label');
     if (parentLabel) {
-      parentLabel.style.opacity = (!canEdit && !cb.checked) ? '0.45' : '1';
+      parentLabel.style.opacity = '1';
+      parentLabel.style.cursor = 'pointer';
     }
   });
 
+  modal.style.display = 'flex';
   modal.classList.add('open');
+  document.body.classList.add('modal-open');
 }
+window.openEditDispatchModal = openEditDispatchModal;
 
 function deleteDispatchRecord(id) {
   const d = dispatches.find(item => item.id === id);
@@ -4161,20 +4167,21 @@ function setupModals() {
   attachTime24hFormatters();
 
   // 救護出勤車輛按鈕群組事件綁定 (91 / 92 / 91+92 單選)
-  document.querySelectorAll('#dispatchVehicleGroup .vehicle-box-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const v = btn.getAttribute('data-vehicle');
-      setDispatchVehicle(v);
+  // 救護出勤車輛按鈕群組事件綁定 (91 / 92 / 91+92 單選)
+  const vehGroup = document.getElementById('dispatchVehicleGroup');
+  if (vehGroup) {
+    vehGroup.addEventListener('click', (e) => {
+      const btn = e.target.closest('.vehicle-box-btn');
+      if (btn) {
+        e.preventDefault();
+        const v = btn.getAttribute('data-vehicle');
+        setDispatchVehicle(v);
+      }
     });
-  });
+  }
 
   // 開啟出勤 Modal (重設為新增狀態)
   function openCreateDispatchModal() {
-    if (!isLoggedIn()) {
-      showToast('請先登入義消隊員或承辦人帳號！', '⚠️');
-      document.getElementById('modalLogin')?.classList.add('open');
-      return;
-    }
     modalDispatch.removeAttribute('data-edit-id');
     setDispatchModalReadOnly(false, '91');
     const title = modalDispatch.querySelector('h3');
@@ -4212,6 +4219,9 @@ function setupModals() {
     // 處置項目預設全部不勾選
     document.querySelectorAll('input[name="treatment"]').forEach(cb => {
       cb.checked = false;
+      cb.disabled = false;
+      const parentLabel = cb.closest('label');
+      if (parentLabel) parentLabel.style.opacity = '1';
     });
 
     currentDispatchSelectedMembers = [];
@@ -4220,10 +4230,13 @@ function setupModals() {
       currentDispatchSelectedMembers.push(cur);
     }
     initDispatchMemberSelect();
-    renderDispatchMemberChips();
-    // renderDispatchQuickMemberChips(); (已依需求移除)
+    renderDispatchMemberChips(false);
+
+    modalDispatch.style.display = 'flex';
     modalDispatch.classList.add('open');
+    document.body.classList.add('modal-open');
   }
+  window.openCreateDispatchModal = openCreateDispatchModal;
 
   // 監聽送醫結果狀態：若為空跑、拒送，自動將送往醫院清為空值
   const inputResultType = document.getElementById('inputResultType');
@@ -4250,8 +4263,10 @@ function setupModals() {
     });
   }
 
-  document.getElementById('btnOpenNewDispatchModal')?.addEventListener('click', openCreateDispatchModal);
-  document.getElementById('btnNewDispatchHeader')?.addEventListener('click', openCreateDispatchModal);
+  const btnOpen1 = document.getElementById('btnOpenNewDispatchModal');
+  const btnOpen2 = document.getElementById('btnNewDispatchHeader');
+  if (btnOpen1) btnOpen1.onclick = openCreateDispatchModal;
+  if (btnOpen2) btnOpen2.onclick = openCreateDispatchModal;
 
   // 更新排班 Modal 內的個人額度即時提示
   function updateModalQuotaPreview(targetMem) {
@@ -4534,9 +4549,16 @@ function setupModals() {
   document.querySelectorAll('[data-close-modal]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const modalId = btn.getAttribute('data-close-modal');
-      document.getElementById(modalId)?.classList.remove('open');
+      const el = document.getElementById(modalId);
+      if (el) {
+        el.classList.remove('open');
+        el.style.display = 'none';
+      }
       if (modalId === 'modalClaimShift') {
         modalClaim.removeAttribute('data-officer-proxy');
+      }
+      if (!document.querySelector('.modal-overlay.open')) {
+        document.body.classList.remove('modal-open');
       }
     });
   });
@@ -4546,8 +4568,12 @@ function setupModals() {
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) {
         overlay.classList.remove('open');
+        overlay.style.display = 'none';
         if (overlay.id === 'modalClaimShift') {
           modalClaim.removeAttribute('data-officer-proxy');
+        }
+        if (!document.querySelector('.modal-overlay.open')) {
+          document.body.classList.remove('modal-open');
         }
       }
     });
@@ -6778,7 +6804,7 @@ function setupAuthSystem() {
   });
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+function initApp() {
   setupAuthSystem();
   initMemberSelector();
   populateShiftDatesDropdown();
@@ -6798,5 +6824,11 @@ document.addEventListener('DOMContentLoaded', () => {
   } else {
     window.openLoginPortal?.('volunteer');
   }
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}
 
