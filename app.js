@@ -1,4 +1,4 @@
-import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS, SQUAD_CONFIG, INITIAL_ANNOUNCEMENTS } from './data.js?v=20261009_v33';
+import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS, SQUAD_CONFIG, INITIAL_ANNOUNCEMENTS } from './data.js?v=20261009_v34';
 
 // ==========================================
 // 1. 資料持久化管理 (LocalStorage)
@@ -99,7 +99,7 @@ let dispatches = Store.get('dispatches', INITIAL_DISPATCHES);
 Store.set('dispatches', dispatches);
 
 let shifts = Store.get('shifts', INITIAL_SHIFTS)
-  .filter(s => s.memberName && s.status !== '缺協勤')
+  .filter(s => s.memberName && s.status !== '缺協勤' && s.vehicle !== '分隊公告' && s.vehicle !== '系統帳號')
   .map(s => {
     let v = s.vehicle;
     if (!v || v === '博館91' || v === '博館92' || v.includes('91') || v.includes('92')) {
@@ -132,8 +132,11 @@ try {
         dispatches = Store.get('dispatches', []);
         announcements = Store.get('announcements', []);
         members = syncOfficialMembers(Store.get('members', []));
-        shifts = Store.get('shifts', []);
+        shifts = Store.get('shifts', []).filter(s => s.vehicle !== '分隊公告' && s.vehicle !== '系統帳號');
         activeDuty = Store.get('activeDuty', null);
+        const updatedAuth = Store.get('current_auth_user', null);
+        if (updatedAuth) currentAuthUser = updatedAuth;
+        updateUserNavbarUi();
         updateAllViews();
       }
     };
@@ -185,6 +188,7 @@ function initSupabase() {
       syncFromSupabase();
       syncAttendanceFromSupabase();
       syncDispatchesFromSupabase();
+      syncUserAccountsFromSupabase();
       return true;
     } catch (e) {
       console.warn('Supabase init failed:', e);
@@ -217,9 +221,9 @@ async function syncFromSupabase() {
   try {
     const { data: remoteShifts, error: sErr } = await supabaseClient.from('shifts').select('*');
     if (!sErr && remoteShifts) {
-      // 排班紀錄 (排除公告)
+      // 排班紀錄 (排除公告與帳號備份)
       shifts = remoteShifts
-        .filter(s => s.member_name && s.status !== '缺協勤' && s.vehicle !== '分隊公告')
+        .filter(s => s.member_name && s.status !== '缺協勤' && s.vehicle !== '分隊公告' && s.vehicle !== '系統帳號')
         .map(s => {
           let v = s.vehicle;
           if (!v || v === '博館91' || v === '博館92' || v.includes('91') || v.includes('92')) {
@@ -255,6 +259,11 @@ async function syncFromSupabase() {
         announcements = remoteAnns;
         Store.set('announcements', announcements);
         renderAnnouncements();
+      }
+
+      // 同步提取帳號安全備份
+      if (remoteShifts.some(s => s.vehicle === '系統帳號')) {
+        syncUserAccountsFromSupabase();
       }
 
       // 同步清理雲端多餘的缺協勤/空紀錄
@@ -331,6 +340,154 @@ async function syncDispatchesFromSupabase() {
   }
 }
 
+// 4. 義消帳號與自訂密碼多裝置即時同步 (User Accounts)
+async function syncUserAccountsFromSupabase() {
+  if (!supabaseClient) return;
+  try {
+    let remoteAccounts = [];
+
+    // 1. 嘗試由 public.user_accounts 資料表載入
+    try {
+      const { data, error } = await supabaseClient.from('user_accounts').select('*');
+      if (!error && data && data.length > 0) {
+        remoteAccounts = data.map(r => ({
+          id: r.id,
+          username: r.username,
+          memberId: r.member_id,
+          name: r.name,
+          password: r.password_hash,
+          hasChangedPassword: !!r.has_changed_password,
+          passwordChangedAt: r.password_changed_at,
+          isAdmin: !!r.is_admin
+        }));
+      }
+    } catch (e) {
+      console.warn('Sync from user_accounts table note:', e);
+    }
+
+    // 2. 雙軌讀取：若無資料，從 shifts 備份 (vehicle='系統帳號') 載入
+    try {
+      const { data: bData, error: bErr } = await supabaseClient
+        .from('shifts')
+        .select('*')
+        .eq('vehicle', '系統帳號');
+      if (!bErr && bData && bData.length > 0) {
+        bData.forEach(row => {
+          if (row.notes) {
+            try {
+              const parsed = JSON.parse(row.notes);
+              if (parsed && parsed.username && parsed.password) {
+                const existing = remoteAccounts.find(a => a.username === parsed.username);
+                if (!existing) {
+                  remoteAccounts.push(parsed);
+                } else if (parsed.hasChangedPassword && !existing.hasChangedPassword) {
+                  existing.password = parsed.password;
+                  existing.hasChangedPassword = true;
+                }
+              }
+            } catch (e) {}
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('Sync from shifts backup note:', e);
+    }
+
+    // 3. 合併遠端帳號至本機 LocalStorage
+    if (remoteAccounts.length > 0) {
+      const localAccs = getUserAccounts();
+      let hasChanges = false;
+      remoteAccounts.forEach(rem => {
+        const local = localAccs.find(a => a.username === rem.username || (rem.memberId && a.memberId === rem.memberId));
+        if (local) {
+          if (rem.hasChangedPassword && (!local.hasChangedPassword || local.password !== rem.password)) {
+            local.password = rem.password;
+            local.hasChangedPassword = true;
+            local.passwordChangedAt = rem.passwordChangedAt || local.passwordChangedAt;
+            hasChanges = true;
+          } else if (!rem.hasChangedPassword && local.hasChangedPassword && local.password === '1234') {
+            local.hasChangedPassword = false;
+            hasChanges = true;
+          }
+        }
+      });
+
+      if (hasChanges) {
+        Store.set('user_accounts', localAccs);
+        if (currentAuthUser) {
+          const updatedCur = localAccs.find(a => a.username === currentAuthUser.username);
+          if (updatedCur) {
+            currentAuthUser = updatedCur;
+            Store.set('current_auth_user', currentAuthUser);
+          }
+        }
+        renderAdminPasswordTrackingTable();
+      }
+    }
+  } catch (err) {
+    console.warn('syncUserAccountsFromSupabase error:', err);
+  }
+}
+
+// 推播單一帳號與新密碼至 Supabase (雙軌保險寫入)
+async function pushUserAccountToSupabase(acc) {
+  if (!acc) return;
+  const allAccs = getUserAccounts();
+  const idx = allAccs.findIndex(a => a.username === acc.username || a.memberId === acc.memberId);
+  if (idx >= 0) {
+    allAccs[idx] = { ...allAccs[idx], ...acc };
+  } else {
+    allAccs.push(acc);
+  }
+  Store.set('user_accounts', allAccs);
+
+  if (!supabaseClient) return;
+
+  // 1. 寫入 user_accounts 資料表
+  try {
+    await supabaseClient.from('user_accounts').upsert({
+      id: acc.id || `acc-${acc.memberId || acc.username}`,
+      username: acc.username,
+      member_id: acc.memberId || null,
+      name: acc.name,
+      password_hash: acc.password,
+      has_changed_password: !!acc.hasChangedPassword,
+      password_changed_at: new Date().toISOString(),
+      is_admin: !!acc.isAdmin
+    }, { onConflict: 'username' });
+  } catch (err) {
+    console.warn('Push to user_accounts table note:', err);
+  }
+
+  // 2. 雙軌備份至 shifts 資料表 (確保零設定也能 100% 跨手機、電腦同步)
+  try {
+    const backupId = `sec-acc-${acc.memberId || acc.username}`;
+    await supabaseClient.from('shifts').upsert({
+      id: backupId,
+      shift_date: '2099-12-31',
+      day_num: 31,
+      day_of_week: '日',
+      vehicle: '系統帳號',
+      period: '全日',
+      member_name: acc.username,
+      shift_type: acc.isAdmin ? 'ADMIN' : 'VOLUNTEER',
+      status: acc.hasChangedPassword ? 'CHANGED' : 'DEFAULT',
+      notes: JSON.stringify({
+        id: acc.id || backupId,
+        username: acc.username,
+        name: acc.name,
+        memberId: acc.memberId,
+        password: acc.password,
+        hasChangedPassword: acc.hasChangedPassword,
+        passwordChangedAt: acc.passwordChangedAt || new Date().toLocaleString('zh-TW'),
+        isAdmin: acc.isAdmin
+      })
+    }, { onConflict: 'id' });
+  } catch (err) {
+    console.warn('Backup to shifts note:', err);
+  }
+}
+
 // 建立 Realtime 即時推播監聽 (全域多裝置跨頁廣播)
 function setupSupabaseRealtime() {
   if (!supabaseClient) return;
@@ -356,6 +513,14 @@ function setupSupabaseRealtime() {
       .channel('public:dispatch_records')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatch_records' }, () => {
         syncDispatchesFromSupabase();
+      })
+      .subscribe();
+
+    // 監聽帳號與自訂密碼異動
+    supabaseClient
+      .channel('public:user_accounts')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_accounts' }, () => {
+        syncUserAccountsFromSupabase();
       })
       .subscribe();
   } catch (e) {
@@ -724,7 +889,8 @@ function updateDutyHero() {
       btnOut.classList.remove('disabled');
       btnOut.style.opacity = '1';
     }
-    document.getElementById('dutyTimerDisplay').textContent = '00:00:00';
+    const timerEl = document.getElementById('dutyTimerDisplay');
+    if (timerEl) timerEl.textContent = '00:00:00';
   }
 }
 
@@ -6071,8 +6237,10 @@ function renderAdminPasswordTrackingTable() {
           target.hasChangedPassword = false;
           target.passwordChangedAt = null;
           Store.set('user_accounts', allAccs);
+          pushUserAccountToSupabase(target);
+          notifyCrossTabSync();
           renderAdminPasswordTrackingTable();
-          showToast(`已成功將【${u}】密碼重設為預設 1234！`, '🔑');
+          showToast(`已成功將【${u}】密碼重設為預設 1234，並已同步至雲端！`, '🔑');
         }
       }
     });
@@ -6187,6 +6355,19 @@ function setupAuthSystem() {
 
     if (lastRemembered) {
       updateVolunteerPreview(lastRemembered);
+      updatePinInputPlaceholder(lastRemembered);
+    }
+  }
+
+  function updatePinInputPlaceholder(name) {
+    const pinInput = document.getElementById('inputVolunteerPin');
+    if (!pinInput || !name) return;
+    const allAccs = getUserAccounts();
+    const matched = allAccs.find(a => a.username === name || a.name === name);
+    if (matched && matched.hasChangedPassword) {
+      pinInput.placeholder = '請輸入您的自訂專屬密碼';
+    } else {
+      pinInput.placeholder = '請輸入密碼 (預設 1234)';
     }
   }
 
@@ -6206,7 +6387,12 @@ function setupAuthSystem() {
     const name = e.target.value;
     updateVolunteerPreview(name);
     Store.set('last_selected_volunteer', name);
-    document.getElementById('inputVolunteerPin')?.focus();
+    updatePinInputPlaceholder(name);
+    const pinInput = document.getElementById('inputVolunteerPin');
+    if (pinInput) {
+      pinInput.value = '';
+      pinInput.focus();
+    }
   });
 
   // 密碼顯示切換
@@ -6245,7 +6431,11 @@ function setupAuthSystem() {
     }
 
     if (matched.password !== pin) {
-      showToast('密碼輸入錯誤！隊員預設密碼為 1234', '❌');
+      if (matched.hasChangedPassword) {
+        showToast(`【${matched.name}】密碼輸入錯誤！\n您先前已設定過個人專屬密碼，請輸入自訂密碼；\n若忘記密碼，請聯絡分隊承辦人一鍵重設。`, '❌');
+      } else {
+        showToast(`【${matched.name}】密碼輸入錯誤！\n尚未變更密碼前，預設密碼為 1234，請重新輸入。`, '❌');
+      }
       playFeedbackSound('alert');
       document.getElementById('inputVolunteerPin')?.focus();
       return;
@@ -6414,6 +6604,8 @@ function setupAuthSystem() {
       acc.passwordChangedAt = new Date().toLocaleString('zh-TW');
       Store.set('user_accounts', allAccs);
       tempPendingUser = acc;
+      pushUserAccountToSupabase(acc);
+      notifyCrossTabSync();
     }
 
     // 轉為正式登入
@@ -6421,6 +6613,8 @@ function setupAuthSystem() {
     Store.set('current_auth_user', currentAuthUser);
     currentMemberId = currentAuthUser.memberId;
     Store.set('currentMemberId', currentMemberId);
+    Store.set('remember_login', true);
+    Store.set('last_selected_volunteer', currentAuthUser.name);
     tempPendingUser = null;
 
     modalFirst?.classList.remove('open');
@@ -6470,13 +6664,15 @@ function setupAuthSystem() {
       Store.set('user_accounts', allAccs);
       currentAuthUser = acc;
       Store.set('current_auth_user', currentAuthUser);
+      pushUserAccountToSupabase(acc);
+      notifyCrossTabSync();
     }
 
     modalChange?.classList.remove('open');
     updateUserNavbarUi();
     updateAllViews();
     playFeedbackSound('success');
-    showToast('個人密碼已成功變更，請妥善保管！', '🔐');
+    showToast('個人密碼已成功變更，並已同步至雲端！請妥善保管', '🔐');
   });
 
   // 8. 密碼篩選按鈕

@@ -23,7 +23,7 @@
   <!-- Supabase JS Client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
-  <link rel="stylesheet" href="styles.css?v=20261009_v33">
+  <link rel="stylesheet" href="styles.css?v=20261009_v34">
 </head>
 <body>
 
@@ -163,9 +163,7 @@
             </button>
           </div>
 
-          <div class="duty-timer-title">本次在隊協勤累積時間</div>
-          <div id="dutyTimerDisplay" class="duty-timer-display">00:00:00</div>
-          <div id="clockLive" class="clock-live">當前系統時間 (24小時制)：2026-10-09 15:20:00</div>
+          <div id="clockLive" class="clock-live" style="margin: 0.5rem 0 1rem 0; font-size: 0.95rem;">當前系統時間 (24小時制)：2026-10-09 15:20:00</div>
 
           <div class="punch-actions" style="margin-top: 0.85rem; display: flex; gap: 1rem;">
             <button id="btnPunchIn" class="btn-punch btn-punch-in" style="flex: 1; padding: 0.95rem 1rem;">
@@ -2001,7 +1999,7 @@
               <button type="button" id="btnTogglePinVisibility" class="btn-text-toggle-pin">顯示密碼</button>
             </div>
             <div class="pin-input-wrap">
-              <input type="password" id="inputVolunteerPin" class="form-input login-pin-input" inputmode="numeric" placeholder="請輸入密碼 (預設 1234)" required maxlength="20">
+              <input type="password" id="inputVolunteerPin" class="form-input login-pin-input" placeholder="請輸入密碼 (預設 1234)" required maxlength="20">
             </div>
           </div>
 
@@ -2398,6 +2396,6 @@
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- 主邏輯 JS (附防快取版本) -->
-  <script type="module" src="app.js?v=20261009_v33"></script>
+  <script type="module" src="app.js?v=20261009_v34"></script>
 </body>
 </html>
