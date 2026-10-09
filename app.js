@@ -4120,28 +4120,7 @@ function initDispatchMemberSelect() {
     if (g.el.children.length > 0) select.appendChild(g.el);
   });
 
-  // 加選按鈕事件綁定
-  const btnAdd = document.getElementById('btnAddDispatchMember');
-  if (btnAdd && !btnAdd._bound) {
-    btnAdd._bound = true;
-    btnAdd.addEventListener('click', () => {
-      const selectedName = select.value;
-      if (!selectedName) {
-        showToast('請先由下拉選單選取同仁！', '⚠️');
-        return;
-      }
-      const mem = members.find(m => m.name === selectedName);
-      if (!mem) return;
-      if (currentDispatchSelectedMembers.some(m => m.name === selectedName)) {
-        showToast(`【${selectedName}】已在出勤名單中！`, '⚠️');
-        return;
-      }
-      currentDispatchSelectedMembers.push(mem);
-      select.value = '';
-      renderDispatchMemberChips();
-      // renderDispatchQuickMemberChips(); (已依需求移除)
-    });
-  }
+
 
   if (!select._bound) {
     select._bound = true;
@@ -4203,14 +4182,14 @@ function setupModals() {
     if (inRet) inRet.value = retTime24;
 
     document.getElementById('inputResultType').value = '送醫';
-    document.getElementById('inputHospital').value = '中國附醫';
+    document.getElementById('inputHospital').value = '';
     const patInput = document.getElementById('inputPatientCount');
     if (patInput) patInput.value = '1';
     document.getElementById('inputComplaint').value = '';
     
-    // 處置項目預設值
+    // 處置項目預設全部不勾選
     document.querySelectorAll('input[name="treatment"]').forEach(cb => {
-      cb.checked = ['量測生命徵象', '搬運'].includes(cb.value);
+      cb.checked = false;
     });
 
     currentDispatchSelectedMembers = [];
@@ -4241,10 +4220,7 @@ function setupModals() {
           inputPatientCount.value = '1';
         }
       } else {
-        // 送醫
-        if (inputHospital && !inputHospital.value) {
-          inputHospital.value = '中國附醫';
-        }
+        // 送醫：人數預設1人，醫院保留使用者填選狀態（預設空白）
         if (inputPatientCount && (inputPatientCount.value === '0' || !inputPatientCount.value)) {
           inputPatientCount.value = '1';
         }
@@ -5271,9 +5247,7 @@ function setupDeviceToggle() {
 function setupTabs() {
   const tabBtns = document.querySelectorAll('.tab-btn');
   const bottomNavItems = document.querySelectorAll('.bottom-nav-item[data-tab]');
-  const btnBottomNavMore = document.getElementById('btnBottomNavMore');
-  const mobileMoreDrawer = document.getElementById('mobileMoreDrawer');
-  const btnCloseDrawer = document.getElementById('btnCloseDrawer');
+
 
   // 同步底部導覽列 Active 狀態
   function syncBottomNavActive(targetTab) {
@@ -5287,13 +5261,7 @@ function setupTabs() {
       }
     });
 
-    if (btnBottomNavMore) {
-      if (!matched && ['tab-roster', 'tab-officer-dashboard', 'tab-reports', 'tab-supabase'].includes(targetTab)) {
-        btnBottomNavMore.classList.add('active');
-      } else {
-        btnBottomNavMore.classList.remove('active');
-      }
-    }
+
   }
 
   // 頂部最新公告橫幅點擊直達「分隊公告」分頁
@@ -5351,51 +5319,7 @@ function setupTabs() {
     });
   });
 
-  // 手機底部「更多功能」抽屜選單互動
-  if (btnBottomNavMore && mobileMoreDrawer) {
-    btnBottomNavMore.addEventListener('click', (e) => {
-      e.stopPropagation();
-      mobileMoreDrawer.classList.toggle('open');
-    });
 
-    btnCloseDrawer?.addEventListener('click', () => {
-      mobileMoreDrawer.classList.remove('open');
-    });
-
-    mobileMoreDrawer.addEventListener('click', (e) => {
-      if (e.target === mobileMoreDrawer) {
-        mobileMoreDrawer.classList.remove('open');
-      }
-    });
-
-    // 抽屜內各功能頁籤點擊
-    mobileMoreDrawer.querySelectorAll('.drawer-item[data-tab]').forEach(item => {
-      item.addEventListener('click', () => {
-        const targetTab = item.getAttribute('data-tab');
-        mobileMoreDrawer.classList.remove('open');
-        const targetBtn = document.querySelector(`.tab-btn[data-tab="${targetTab}"]`);
-        if (targetBtn) {
-          targetBtn.click();
-        }
-      });
-    });
-
-    // 抽屜內快速功能快捷鍵
-    document.getElementById('drawerBtnSupabaseModal')?.addEventListener('click', () => {
-      mobileMoreDrawer.classList.remove('open');
-      document.getElementById('btnOpenSupabaseModal')?.click();
-    });
-
-    document.getElementById('drawerBtnChangePassword')?.addEventListener('click', () => {
-      mobileMoreDrawer.classList.remove('open');
-      document.getElementById('btnOpenChangePassword')?.click();
-    });
-
-    document.getElementById('drawerBtnLogout')?.addEventListener('click', () => {
-      mobileMoreDrawer.classList.remove('open');
-      document.getElementById('btnLogout')?.click();
-    });
-  }
 
   // 支援網址直接帶入 Hash (例如: #tab-schedule 或 #tab-badges) 直接開啟對應分頁
   function switchTabByHash() {

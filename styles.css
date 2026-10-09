@@ -2991,7 +2991,7 @@ input.time-24h {
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     -webkit-tap-highlight-color: transparent;
     position: relative;
-    max-width: 72px;
+    max-width: 88px;
     min-height: 52px;
   }
 
@@ -3400,14 +3400,7 @@ body:has(.phone-mode) .mobile-bottom-nav {
   border-radius: 20px 20px 0 0;
 }
 
-body:has(.phone-mode) .mobile-more-drawer-overlay {
-  display: flex !important;
-}
 
-body:has(.phone-mode) .mobile-more-drawer-content {
-  max-width: 440px;
-  margin: 0 auto;
-}
 
 /* ==============================================================================
    獨立義消專屬全螢幕登入畫面 (Dedicated Volunteer Mobile Login Portal)
