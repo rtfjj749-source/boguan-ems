@@ -300,6 +300,7 @@
             <option value="ALL">全部車輛</option>
             <option value="博館91">博館 91</option>
             <option value="博館92">博館 92</option>
+            <option value="91-92">91-92</option>
           </select>
         </div>
         <div>
@@ -1166,6 +1167,7 @@
             <select id="inputVehicle" class="form-select">
               <option value="博館91">博館 91</option>
               <option value="博館92">博館 92</option>
+              <option value="91-92">91-92</option>
             </select>
           </div>
         </div>
@@ -1188,8 +1190,8 @@
 
         <div class="form-group">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
-            <label style="margin-bottom: 0;">出勤義消同仁 (支援 1~3 位，全體同步累計履歷)</label>
-            <span id="dispatchSelectedCountBadge" style="font-size: 0.75rem; color: #38bdf8; font-weight: 700;">已選擇 0 / 3 人</span>
+            <label style="margin-bottom: 0;">出勤義消同仁 (支援同仁隨車出勤，全體同步累計履歷)</label>
+            <span id="dispatchSelectedCountBadge" style="font-size: 0.75rem; color: #38bdf8; font-weight: 700;">已選擇 0 人</span>
           </div>
 
           <!-- 已選取的同仁標籤容器 (Chips) -->
@@ -1207,7 +1209,7 @@
           </div>
         </div>
 
-        <div class="grid-2">
+        <div class="grid-3">
           <div class="form-group">
             <label>送醫/結果狀態</label>
             <select id="inputResultType" class="form-select">
@@ -1218,8 +1220,13 @@
             </select>
           </div>
           <div class="form-group">
+            <label>被救護人數</label>
+            <input type="number" id="inputPatientCount" class="form-input" min="0" max="99" value="1" required placeholder="人數">
+          </div>
+          <div class="form-group">
             <label>送往醫院</label>
             <select id="inputHospital" class="form-select">
+              <option value="">無 (空跑/拒送/未送醫)</option>
               <option value="中國附醫" selected>中國附醫</option>
               <option value="惠中林新">惠中林新</option>
               <option value="中港澄清">中港澄清</option>
@@ -1241,7 +1248,6 @@
               <option value="大里仁愛">大里仁愛</option>
               <option value="潭子慈濟">潭子慈濟</option>
               <option value="向上光田">向上光田</option>
-              <option value="無 (空跑/未送醫/拒送)">無 (空跑/未送醫/拒送)</option>
             </select>
           </div>
         </div>

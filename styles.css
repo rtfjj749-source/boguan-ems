@@ -698,6 +698,7 @@ body {
 
 .vehicle-pill.v91 { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
 .vehicle-pill.v92 { background: rgba(249, 115, 22, 0.2); color: #fb923c; border: 1px solid rgba(249, 115, 22, 0.4); }
+.vehicle-pill.v91-92 { background: linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(249, 115, 22, 0.25)); color: #fca5a5; border: 1px solid rgba(251, 146, 60, 0.5); font-weight: 700; }
 .vehicle-pill.v-ems { background: rgba(2, 132, 199, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); }
 .vehicle-pill.v-desk { background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); }
 

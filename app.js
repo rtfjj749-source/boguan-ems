@@ -904,12 +904,17 @@ function renderDispatchList() {
   filtered.forEach(d => {
     const card = document.createElement('div');
     card.className = 'dispatch-card';
-    const vehicleClass = d.vehicle.includes('91') ? 'v91' : (d.vehicle.includes('92') ? 'v92' : 'v-ems');
+    const is9192 = d.vehicle && d.vehicle.includes('91') && d.vehicle.includes('92');
+    const vehicleClass = is9192 ? 'v91-92' : (d.vehicle.includes('91') ? 'v91' : (d.vehicle.includes('92') ? 'v92' : 'v-ems'));
 
     const tagsHtml = d.treatments.map(t => {
       const isSpecial = ['CPR', 'AED', '12導程心電圖', '靜脈注射'].includes(t);
       return `<span class="treatment-tag ${isSpecial ? 'highlight' : ''}">${t}</span>`;
     }).join('');
+
+    const isNoHosp = !d.hospital || d.hospital === '無' || d.isIdle || (d.resultType && (d.resultType.includes('空跑') || d.resultType === '拒送'));
+    const hospDisplay = isNoHosp ? '<span style="color: var(--text-muted);">無 (未送醫)</span>' : d.hospital;
+    const patCount = (d.patientCount !== undefined && d.patientCount !== null) ? d.patientCount : (d.isIdle ? 0 : 1);
 
     card.innerHTML = `
       <div class="dispatch-header">
@@ -936,7 +941,8 @@ function renderDispatchList() {
 
       <div class="dispatch-meta">
         <div class="dispatch-meta-item">📍 <strong>地點：</strong> ${d.location}</div>
-        <div class="dispatch-meta-item">🏥 <strong>送往：</strong> ${d.hospital || '無'}</div>
+        <div class="dispatch-meta-item">🏥 <strong>送往：</strong> ${hospDisplay}</div>
+        <div class="dispatch-meta-item">👥 <strong>被救護人數：</strong> <span style="color: #fbbf24; font-weight: 700;">${patCount} 人</span></div>
         <div class="dispatch-meta-item">👨‍🚒 <strong>出勤義消：</strong> <span style="color: #38bdf8; font-weight: 700;">${d.memberNames.join('、')}${d.memberNames.length > 1 ? ` (共${d.memberNames.length}人)` : ''}</span></div>
       </div>
 
@@ -3511,15 +3517,24 @@ function openEditDispatchModal(id) {
   renderDispatchMemberChips();
   // renderDispatchQuickMemberChips(); (已依需求移除)
   document.getElementById('inputResultType').value = d.resultType || '送醫';
+  const patInput = document.getElementById('inputPatientCount');
+  if (patInput) {
+    patInput.value = (d.patientCount !== undefined && d.patientCount !== null) ? d.patientCount : (d.isIdle ? 0 : 1);
+  }
   const hospSelect = document.getElementById('inputHospital');
   if (hospSelect) {
-    const rawHosp = d.hospital || '中國附醫';
-    let matchedOpt = Array.from(hospSelect.options).find(opt => opt.value === rawHosp);
-    if (!matchedOpt && rawHosp.includes('中國')) matchedOpt = Array.from(hospSelect.options).find(opt => opt.value === '中國附醫');
-    if (!matchedOpt && rawHosp.includes('林新')) matchedOpt = Array.from(hospSelect.options).find(opt => opt.value.includes('林新'));
-    if (!matchedOpt && rawHosp.includes('澄清')) matchedOpt = Array.from(hospSelect.options).find(opt => opt.value.includes('澄清'));
-    if (!matchedOpt && rawHosp.includes('榮總')) matchedOpt = Array.from(hospSelect.options).find(opt => opt.value === '台中榮總');
-    hospSelect.value = matchedOpt ? matchedOpt.value : '中國附醫';
+    const isNoHosp = !d.hospital || d.hospital === '無' || d.isIdle || (d.resultType && (d.resultType.includes('空跑') || d.resultType === '拒送'));
+    if (isNoHosp) {
+      hospSelect.value = '';
+    } else {
+      const rawHosp = d.hospital || '中國附醫';
+      let matchedOpt = Array.from(hospSelect.options).find(opt => opt.value === rawHosp);
+      if (!matchedOpt && rawHosp.includes('中國')) matchedOpt = Array.from(hospSelect.options).find(opt => opt.value === '中國附醫');
+      if (!matchedOpt && rawHosp.includes('林新')) matchedOpt = Array.from(hospSelect.options).find(opt => opt.value.includes('林新'));
+      if (!matchedOpt && rawHosp.includes('澄清')) matchedOpt = Array.from(hospSelect.options).find(opt => opt.value.includes('澄清'));
+      if (!matchedOpt && rawHosp.includes('榮總')) matchedOpt = Array.from(hospSelect.options).find(opt => opt.value === '台中榮總');
+      hospSelect.value = matchedOpt ? matchedOpt.value : (rawHosp || '中國附醫');
+    }
   }
   document.getElementById('inputComplaint').value = d.chiefComplaint || '';
 
@@ -3558,7 +3573,7 @@ function renderDispatchMemberChips() {
   if (!container) return;
 
   if (currentDispatchSelectedMembers.length === 0) {
-    container.innerHTML = '<span style="color: var(--text-dim); font-size: 0.78rem;">尚未選擇義消（請由下方快速點選或下拉選取，支援 1~3 位同仁隨車出勤）</span>';
+    container.innerHTML = '<span style="color: var(--text-dim); font-size: 0.78rem;">尚未選擇義消（請由下方快速點選或下拉選取同仁隨車出勤）</span>';
   } else {
     container.innerHTML = currentDispatchSelectedMembers.map(m => `
       <span class="selected-member-chip">
@@ -3581,13 +3596,8 @@ function renderDispatchMemberChips() {
 
   if (countBadge) {
     const count = currentDispatchSelectedMembers.length;
-    countBadge.textContent = `已選擇 ${count} / 3 人`;
-    if (count >= 3) {
-      countBadge.style.color = '#fbbf24';
-      countBadge.textContent = `已達上限 3 / 3 人`;
-    } else {
-      countBadge.style.color = '#38bdf8';
-    }
+    countBadge.textContent = `已選擇 ${count} 人`;
+    countBadge.style.color = count > 0 ? '#38bdf8' : 'var(--text-muted)';
   }
 }
 
@@ -3631,11 +3641,6 @@ function renderDispatchQuickMemberChips() {
       if (exists) {
         currentDispatchSelectedMembers = currentDispatchSelectedMembers.filter(m => m.name !== name);
       } else {
-        if (currentDispatchSelectedMembers.length >= 3) {
-          showToast('每趟救護出勤最多支援 3 位義消同仁！', '⚠️');
-          playFeedbackSound('alert');
-          return;
-        }
         currentDispatchSelectedMembers.push(mem);
       }
       renderDispatchMemberChips();
@@ -3691,11 +3696,6 @@ function initDispatchMemberSelect() {
         showToast(`【${selectedName}】已在出勤名單中！`, '⚠️');
         return;
       }
-      if (currentDispatchSelectedMembers.length >= 3) {
-        showToast('每趟救護出勤最多支援 3 位義消同仁！', '⚠️');
-        playFeedbackSound('alert');
-        return;
-      }
       currentDispatchSelectedMembers.push(mem);
       select.value = '';
       renderDispatchMemberChips();
@@ -3712,12 +3712,6 @@ function initDispatchMemberSelect() {
       if (!mem) return;
       if (currentDispatchSelectedMembers.some(m => m.name === selectedName)) {
         showToast(`【${selectedName}】已在出勤名單中！`, '⚠️');
-        select.value = '';
-        return;
-      }
-      if (currentDispatchSelectedMembers.length >= 3) {
-        showToast('每趟救護出勤最多支援 3 位義消同仁！', '⚠️');
-        playFeedbackSound('alert');
         select.value = '';
         return;
       }
@@ -3744,6 +3738,18 @@ function setupModals() {
     const title = modalDispatch.querySelector('h3');
     if (title) title.textContent = '🚑 登記救護出勤紀錄';
     document.getElementById('inputCaseNo').value = `1151007-${String(dispatches.length + 1).padStart(2, '0')}`;
+    document.getElementById('inputVehicle').value = '博館91';
+    document.getElementById('inputResultType').value = '送醫';
+    document.getElementById('inputHospital').value = '中國附醫';
+    const patInput = document.getElementById('inputPatientCount');
+    if (patInput) patInput.value = '1';
+    document.getElementById('inputComplaint').value = '';
+    
+    // 處置項目預設值
+    document.querySelectorAll('input[name="treatment"]').forEach(cb => {
+      cb.checked = ['量測生命徵象', '搬運'].includes(cb.value);
+    });
+
     currentDispatchSelectedMembers = [];
     const cur = getCurrentMember();
     if (cur && cur.name !== '未登入' && cur.id !== 'm0') {
@@ -3753,6 +3759,34 @@ function setupModals() {
     renderDispatchMemberChips();
     // renderDispatchQuickMemberChips(); (已依需求移除)
     modalDispatch.classList.add('open');
+  }
+
+  // 監聽送醫結果狀態：若為空跑、拒送，自動將送往醫院清為空值
+  const inputResultType = document.getElementById('inputResultType');
+  const inputHospital = document.getElementById('inputHospital');
+  const inputPatientCount = document.getElementById('inputPatientCount');
+  if (inputResultType && !inputResultType._boundChange) {
+    inputResultType._boundChange = true;
+    inputResultType.addEventListener('change', () => {
+      const val = inputResultType.value;
+      if (val.includes('空跑')) {
+        if (inputHospital) inputHospital.value = '';
+        if (inputPatientCount) inputPatientCount.value = '0';
+      } else if (val === '拒送') {
+        if (inputHospital) inputHospital.value = '';
+        if (inputPatientCount && (inputPatientCount.value === '0' || !inputPatientCount.value)) {
+          inputPatientCount.value = '1';
+        }
+      } else {
+        // 送醫
+        if (inputHospital && !inputHospital.value) {
+          inputHospital.value = '中國附醫';
+        }
+        if (inputPatientCount && (inputPatientCount.value === '0' || !inputPatientCount.value)) {
+          inputPatientCount.value = '1';
+        }
+      }
+    });
   }
 
   document.getElementById('btnOpenNewDispatchModal')?.addEventListener('click', openCreateDispatchModal);
@@ -4065,7 +4099,7 @@ function setupModals() {
     const memberNames = currentDispatchSelectedMembers.map(m => m.name);
     const memberIds = currentDispatchSelectedMembers.map(m => m.id);
     const resultType = document.getElementById('inputResultType').value;
-    const hospital = document.getElementById('inputHospital').value;
+    let hospital = document.getElementById('inputHospital').value;
     const chiefComplaint = document.getElementById('inputComplaint').value;
 
     const treatments = [];
@@ -4075,10 +4109,22 @@ function setupModals() {
 
     const isRosc = resultType.includes('ROSC');
     const isIdle = resultType.includes('空跑');
+    const isRefused = resultType === '拒送';
+
+    // 送醫結果如果是空跑、拒送，送往醫院變成空值
+    if (isIdle || isRefused) {
+      hospital = '';
+    }
+
+    const patInput = document.getElementById('inputPatientCount');
+    let patientCount = patInput ? parseInt(patInput.value, 10) : (isIdle ? 0 : 1);
+    if (isNaN(patientCount) || patientCount < 0) {
+      patientCount = isIdle ? 0 : 1;
+    }
 
     const editId = modalDispatch.getAttribute('data-edit-id');
     if (editId) {
-      // 警消編輯修改既有出勤紀錄
+      // 警消或隊員編輯修改既有出勤紀錄
       const idx = dispatches.findIndex(d => d.id === editId);
       if (idx !== -1) {
         dispatches[idx] = {
@@ -4091,11 +4137,11 @@ function setupModals() {
           memberNames,
           memberIds,
           resultType,
-          patientCount: isIdle ? 0 : 1,
+          patientCount,
           isIdle,
           treatments,
           chiefComplaint,
-          hospital: isIdle ? '無' : hospital,
+          hospital: (isIdle || isRefused) ? '' : (hospital || '無'),
           isSpecial: isRosc || treatments.includes('12導程心電圖'),
           specialTag: isRosc ? '🌟 ROSC 急救成功' : (treatments.includes('12導程心電圖') ? '📈 12-Lead ECG 傳輸' : '')
         };
@@ -4123,11 +4169,11 @@ function setupModals() {
       memberIds,
       memberNames,
       resultType,
-      patientCount: isIdle ? 0 : 1,
+      patientCount,
       isIdle,
       treatments,
       chiefComplaint,
-      hospital: isIdle ? '無' : hospital,
+      hospital: (isIdle || isRefused) ? '' : (hospital || '無'),
       isSpecial: isRosc || treatments.includes('12導程心電圖'),
       specialTag: isRosc ? '🌟 ROSC 急救成功' : (treatments.includes('12導程心電圖') ? '📈 12-Lead ECG 傳輸' : '')
     };
@@ -4136,7 +4182,7 @@ function setupModals() {
     Store.set('dispatches', dispatches);
     pushDispatchToSupabase(newDisp);
 
-    // 同步升級所有出勤同仁數據 (1~3位全員同步累加榮譽履歷)
+    // 同步升級所有出勤同仁數據 (全員同步累加榮譽履歷)
     currentDispatchSelectedMembers.forEach(targetMem => {
       const mem = members.find(m => m.name === targetMem.name || m.id === targetMem.id);
       if (mem) {
