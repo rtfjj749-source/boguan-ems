@@ -23,7 +23,7 @@
   <!-- Supabase JS Client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
-  <link rel="stylesheet" href="styles.css?v=20261009_v40">
+  <link rel="stylesheet" href="styles.css?v=20261009_v41">
 </head>
 <body>
 
@@ -290,9 +290,9 @@
         <div>
           <select id="filterVehicleSelect" class="form-select" style="min-width: 130px;">
             <option value="ALL">全部車輛</option>
-            <option value="博館91">博館 91</option>
-            <option value="博館92">博館 92</option>
-            <option value="91-92">91-92</option>
+            <option value="91">91</option>
+            <option value="92">92</option>
+            <option value="91+92">91+92</option>
           </select>
         </div>
         <div>
@@ -1216,26 +1216,24 @@
       </div>
 
       <form id="formNewDispatch">
+        <input type="hidden" id="inputCaseNo">
         <div class="grid-2">
-          <div class="form-group">
-            <label>救護案號</label>
-            <input type="text" id="inputCaseNo" class="form-input" required placeholder="例如: 1151009-01">
-          </div>
           <div class="form-group">
             <label>出勤日期 (民國格式，如 115-10-09)</label>
             <input type="text" id="inputDispatchDate" class="form-input" required placeholder="例如: 115-10-09">
           </div>
+          <div class="form-group">
+            <label>出勤車輛 (單選)</label>
+            <div class="vehicle-btn-group" id="dispatchVehicleGroup">
+              <button type="button" class="vehicle-box-btn active" data-vehicle="91">🚑 91</button>
+              <button type="button" class="vehicle-box-btn" data-vehicle="92">🚑 92</button>
+              <button type="button" class="vehicle-box-btn" data-vehicle="91+92">🚑 91+92</button>
+            </div>
+            <input type="hidden" id="inputVehicle" value="91">
+          </div>
         </div>
 
-        <div class="grid-3">
-          <div class="form-group">
-            <label>出勤車輛</label>
-            <select id="inputVehicle" class="form-select">
-              <option value="博館91">博館 91</option>
-              <option value="博館92">博館 92</option>
-              <option value="91-92">91-92</option>
-            </select>
-          </div>
+        <div class="grid-2">
           <div class="form-group">
             <label>出勤時間 (24小時制)</label>
             <input type="text" id="inputDepartureTime" class="form-input time-24h" required placeholder="例如: 20:00" value="20:00" maxlength="5">
@@ -2302,6 +2300,6 @@
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- 主邏輯 JS (附防快取版本) -->
-  <script type="module" src="app.js?v=20261009_v40"></script>
+  <script type="module" src="app.js?v=20261009_v41"></script>
 </body>
 </html>

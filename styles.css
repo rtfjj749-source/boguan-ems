@@ -960,6 +960,44 @@ input.time-24h {
   font-weight: 600;
 }
 
+/* 出勤車輛單選預設方框 (91 / 92 / 91+92) */
+.vehicle-btn-group {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.vehicle-box-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.55rem 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  border-radius: var(--radius-md);
+  border: 1.5px solid rgba(255, 255, 255, 0.15);
+  background: rgba(15, 23, 42, 0.65);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+}
+
+.vehicle-box-btn:hover {
+  border-color: rgba(56, 189, 248, 0.5);
+  color: #f1f5f9;
+  background: rgba(56, 189, 248, 0.1);
+}
+
+.vehicle-box-btn.active {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.22);
+  color: #38bdf8;
+  box-shadow: 0 0 14px rgba(56, 189, 248, 0.35);
+  font-weight: 800;
+}
+
 .btn-primary {
   background: linear-gradient(135deg, #0284c7, #06b6d4);
   color: #fff;

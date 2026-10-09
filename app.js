@@ -1198,7 +1198,12 @@ function renderDispatchList() {
   const isAdm = isSuperAdmin();
 
   const filtered = dispatches.filter(d => {
-    if (filterVehicle !== 'ALL' && d.vehicle !== filterVehicle) return false;
+    if (filterVehicle !== 'ALL') {
+      const v = d.vehicle || '';
+      if (filterVehicle === '91+92' && !(v.includes('91+92') || v.includes('91-92') || (v.includes('91') && v.includes('92')))) return false;
+      if (filterVehicle === '91' && (!v.includes('91') || (v.includes('92') && (v.includes('+') || v.includes('-'))))) return false;
+      if (filterVehicle === '92' && (!v.includes('92') || (v.includes('91') && (v.includes('+') || v.includes('-'))))) return false;
+    }
     if (filterTag === 'ROSC' && (!d.isSpecial || !d.specialTag.includes('ROSC'))) return false;
     if (filterTag === 'ECG' && !d.treatments.includes('12導程心電圖')) return false;
     if (filterTag === 'CPR' && !d.treatments.includes('CPR')) return false;
@@ -1225,7 +1230,7 @@ function renderDispatchList() {
   filtered.forEach(d => {
     const card = document.createElement('div');
     card.className = 'dispatch-card';
-    const is9192 = d.vehicle && d.vehicle.includes('91') && d.vehicle.includes('92');
+    const is9192 = d.vehicle && (d.vehicle.includes('91+92') || d.vehicle.includes('91-92') || (d.vehicle.includes('91') && d.vehicle.includes('92')));
     const vehicleClass = is9192 ? 'v91-92' : (d.vehicle.includes('91') ? 'v91' : (d.vehicle.includes('92') ? 'v92' : 'v-ems'));
 
     const tagsHtml = d.treatments.map(t => {
@@ -3782,6 +3787,25 @@ function openAdminEditMemberModal(memberId) {
   modal.classList.add('open');
 }
 
+function setDispatchVehicle(vehicleVal) {
+  let normalizedVal = (vehicleVal || '91').trim();
+  if (normalizedVal.includes('91') && normalizedVal.includes('92')) normalizedVal = '91+92';
+  else if (normalizedVal.includes('92')) normalizedVal = '92';
+  else if (normalizedVal.includes('91')) normalizedVal = '91';
+  else normalizedVal = '91';
+
+  const inputVeh = document.getElementById('inputVehicle');
+  if (inputVeh) inputVeh.value = normalizedVal;
+
+  document.querySelectorAll('#dispatchVehicleGroup .vehicle-box-btn').forEach(btn => {
+    if (btn.getAttribute('data-vehicle') === normalizedVal) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+}
+
 function openEditDispatchModal(id) {
   const d = dispatches.find(item => item.id === id);
   if (!d) return;
@@ -3797,13 +3821,15 @@ function openEditDispatchModal(id) {
   modal.setAttribute('data-edit-id', d.id);
   
   const title = modal.querySelector('h3');
-  if (title) title.textContent = `✏️ 編輯救護出勤紀錄 (${d.caseNo})`;
+  if (title) title.textContent = `✏️ 編輯救護出勤紀錄 (${d.vehicle || '91'})`;
 
   if (document.getElementById('inputDispatchDate')) {
     document.getElementById('inputDispatchDate').value = d.date || getCurrentRocDate();
   }
-  document.getElementById('inputCaseNo').value = d.caseNo;
-  document.getElementById('inputVehicle').value = d.vehicle || '博館91';
+  if (document.getElementById('inputCaseNo')) {
+    document.getElementById('inputCaseNo').value = d.caseNo || '';
+  }
+  setDispatchVehicle(d.vehicle || '91');
   document.getElementById('inputDepartureTime').value = normalizeTimeStr(d.departureTime) || '20:00';
   document.getElementById('inputReturnTime').value = normalizeTimeStr(d.returnTime) || '21:10';
   document.getElementById('inputLocation').value = d.location || '';
@@ -4005,6 +4031,14 @@ function setupModals() {
   // 全站 24 小時制輸入框防呆與自動格式化掛載
   attachTime24hFormatters();
 
+  // 救護出勤車輛按鈕群組事件綁定 (91 / 92 / 91+92 單選)
+  document.querySelectorAll('#dispatchVehicleGroup .vehicle-box-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const v = btn.getAttribute('data-vehicle');
+      setDispatchVehicle(v);
+    });
+  });
+
   // 開啟出勤 Modal (重設為新增狀態)
   function openCreateDispatchModal() {
     if (!isLoggedIn()) {
@@ -4019,11 +4053,13 @@ function setupModals() {
     const curRocDate = getCurrentRocDate();
     const dateNoDashes = curRocDate.replace(/-/g, '');
     const todaysDispCount = dispatches.filter(d => normalizeRocDateStr(d.date) === normalizeRocDateStr(curRocDate)).length + 1;
-    document.getElementById('inputCaseNo').value = `${dateNoDashes}-${String(todaysDispCount).padStart(2, '0')}`;
+    if (document.getElementById('inputCaseNo')) {
+      document.getElementById('inputCaseNo').value = `${dateNoDashes}-${String(todaysDispCount).padStart(2, '0')}`;
+    }
     if (document.getElementById('inputDispatchDate')) {
       document.getElementById('inputDispatchDate').value = curRocDate;
     }
-    document.getElementById('inputVehicle').value = '博館91';
+    setDispatchVehicle('91');
     
     // 預設當前 24 小時制時間
     const now = new Date();
@@ -4415,8 +4451,14 @@ function setupModals() {
   // 表單 1: 登記或修改出勤案件
   document.getElementById('formNewDispatch')?.addEventListener('submit', (e) => {
     e.preventDefault();
-    const caseNo = document.getElementById('inputCaseNo').value;
-    const vehicle = document.getElementById('inputVehicle').value;
+    const dispatchDate = document.getElementById('inputDispatchDate')?.value || getCurrentRocDate();
+    let caseNo = document.getElementById('inputCaseNo')?.value;
+    if (!caseNo) {
+      const dateNoDashes = dispatchDate.replace(/-/g, '');
+      const todaysDispCount = dispatches.filter(d => normalizeRocDateStr(d.date) === normalizeRocDateStr(dispatchDate)).length + 1;
+      caseNo = `${dateNoDashes}-${String(todaysDispCount).padStart(2, '0')}`;
+    }
+    const vehicle = document.getElementById('inputVehicle')?.value || '91';
     const departureTime = normalizeTimeStr(document.getElementById('inputDepartureTime').value) || '20:00';
     const returnTime = normalizeTimeStr(document.getElementById('inputReturnTime').value) || '21:10';
     const location = document.getElementById('inputLocation').value;
