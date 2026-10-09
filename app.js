@@ -4481,17 +4481,29 @@ function setupModals() {
     });
   });
 
-  // 監聽彈窗開關以鎖定背景滾動，徹底杜絕手機背景跑版黑邊
-  const modalObserver = new MutationObserver(() => {
-    const hasOpenModal = document.querySelector('.modal-overlay.open');
-    if (hasOpenModal) {
+  // 監聽所有彈窗與抽屜開關，強制同步 display none / flex，杜絕手機端 backdrop-filter 黑色遮罩殘影
+  const allOverlays = document.querySelectorAll('.modal-overlay, .mobile-more-drawer-overlay');
+  const overlayObserver = new MutationObserver(() => {
+    allOverlays.forEach(el => {
+      if (el.classList.contains('open')) {
+        el.style.display = 'flex';
+      } else {
+        el.style.display = 'none';
+      }
+    });
+    const hasOpenOverlay = document.querySelector('.modal-overlay.open, .mobile-more-drawer-overlay.open');
+    if (hasOpenOverlay) {
       document.body.classList.add('modal-open');
     } else {
       document.body.classList.remove('modal-open');
     }
   });
-  document.querySelectorAll('.modal-overlay').forEach(el => {
-    modalObserver.observe(el, { attributes: true, attributeFilter: ['class'] });
+
+  allOverlays.forEach(el => {
+    if (!el.classList.contains('open')) {
+      el.style.display = 'none';
+    }
+    overlayObserver.observe(el, { attributes: true, attributeFilter: ['class'] });
   });
 
   // 表單 1: 登記或修改出勤案件
@@ -6340,9 +6352,7 @@ function setupAuthSystem() {
   function closeLoginPortal() {
     if (!portal) return;
     portal.classList.add('hidden');
-    setTimeout(() => {
-      portal.style.display = 'none';
-    }, 280);
+    portal.style.display = 'none';
   }
   window.closeLoginPortal = closeLoginPortal;
 
@@ -6747,8 +6757,7 @@ document.addEventListener('DOMContentLoaded', () => {
   startClock();
   initSupabase();
   updateUserNavbarUi();
-  const remember = Store.get('remember_login', false);
-  if (currentAuthUser && remember) {
+  if (currentAuthUser) {
     window.closeLoginPortal?.();
   } else {
     window.openLoginPortal?.('volunteer');

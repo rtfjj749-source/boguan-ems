@@ -832,33 +832,29 @@ body {
 }
 
 /* 表單與彈跳視窗 (Modals & Inputs) */
-body.modal-open,
-html:has(.modal-overlay.open),
-body:has(.modal-overlay.open) {
+body.modal-open {
   overflow: hidden !important;
-  height: 100% !important;
-  touch-action: none;
 }
 
 .modal-overlay {
+  display: none !important;
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1100;
+  z-index: 2100;
   padding: 1.25rem;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.2s ease;
 }
 
 .modal-overlay.open {
-  opacity: 1;
-  pointer-events: auto;
+  display: flex !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
 }
 
 .modal-box {
@@ -2865,12 +2861,21 @@ input.time-24h {
      手機端彈窗 (Modal Sheet) 徹底改善排版防黑邊、防跑版
      ============================================================================== */
   .modal-overlay {
+    display: none !important;
     padding: 0 !important;
-    align-items: flex-end !important; /* 原生抽屜底板模式：徹底根絕浮空黑色斷層 */
+    align-items: flex-end !important;
     justify-content: center !important;
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch !important;
     z-index: 2100 !important;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .modal-overlay.open {
+    display: flex !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
   }
 
   .modal-box {
@@ -3037,22 +3042,22 @@ input.time-24h {
      手機版更多功能抽屜選單 (Bottom Sheet Action Drawer)
      ============================================================================== */
   .mobile-more-drawer-overlay {
-    display: flex;
+    display: none !important;
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.68);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    z-index: 1001;
+    z-index: 2200;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.26s ease;
     align-items: flex-end;
   }
 
   .mobile-more-drawer-overlay.open {
-    opacity: 1;
-    pointer-events: auto;
+    display: flex !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
   }
 
   .mobile-more-drawer-content {
@@ -3423,9 +3428,10 @@ body:has(.phone-mode) .mobile-more-drawer-content {
 }
 
 .mobile-login-portal.hidden {
-  opacity: 0;
-  pointer-events: none;
-  visibility: hidden;
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
   transform: scale(0.96);
 }
 
