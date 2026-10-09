@@ -730,6 +730,23 @@ function isCurrentOfficer() {
          m.name === '林振傑' || m.name === '張宥安' || m.name === '彭凱琳';
 }
 
+// 判斷當前使用者是否具備修改該筆救護出勤紀錄之權限 (嚴格限制：僅限該趟出勤義消或警消承辦人)
+function canEditDispatch(d) {
+  if (!d) return false;
+  if (!isLoggedIn()) return false;
+  if (isSuperAdmin()) return true;
+  const cur = getCurrentMember();
+  if (!cur || cur.id === 'guest') return false;
+
+  const authName = (currentAuthUser?.name || cur.name || '').trim();
+  const authId = currentAuthUser?.memberId || cur.id;
+
+  const hasName = Array.isArray(d.memberNames) && d.memberNames.some(name => (name || '').trim() === authName);
+  const hasId = Array.isArray(d.memberIds) && d.memberIds.some(id => id === authId || id === cur.id);
+
+  return hasName || hasId;
+}
+
 function initMemberSelector() {
   const select = document.getElementById('memberSelect');
   const modalMemberSelect = document.getElementById('inputDispatchMember');
@@ -1171,6 +1188,8 @@ function renderDispatchList() {
     const hospDisplay = isNoHosp ? '<span style="color: var(--text-muted);">無 (未送醫)</span>' : d.hospital;
     const patCount = (d.patientCount !== undefined && d.patientCount !== null) ? d.patientCount : (d.isIdle ? 0 : 1);
 
+    const canEdit = canEditDispatch(d);
+
     card.innerHTML = `
       <div class="dispatch-header">
         <div style="display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap;">
@@ -1179,9 +1198,11 @@ function renderDispatchList() {
           <span style="font-weight: 600; font-size: 0.95rem;">${d.resultType}</span>
           ${d.specialTag ? `<span style="background: rgba(245,158,11,0.2); color: #fbbf24; border: 1px solid rgba(245,158,11,0.4); font-size: 0.75rem; padding: 2px 8px; border-radius: 99px; font-weight: 700;">${d.specialTag}</span>` : ''}
           <div style="display: inline-flex; gap: 4px; margin-left: auto;">
-            <button class="btn-admin-edit btn-admin-edit-disp" data-id="${d.id}" style="font-size: 0.75rem; padding: 3px 8px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 6px; cursor: pointer;" title="修改此出勤紀錄內容">
-              ✏️ 修改
-            </button>
+            ${canEdit ? `
+              <button class="btn-admin-edit btn-admin-edit-disp" data-id="${d.id}" style="font-size: 0.75rem; padding: 3px 8px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 6px; cursor: pointer;" title="修改此出勤紀錄內容 (限本趟出勤義消或承辦人)">
+                ✏️ 修改
+              </button>
+            ` : ''}
             ${isAdm ? `
               <button class="btn-admin-delete btn-admin-delete-disp" data-id="${d.id}" style="font-size: 0.75rem; padding: 3px 8px; background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 6px; cursor: pointer;" title="刪除此出勤紀錄">
                 🗑️ 刪除
@@ -1197,7 +1218,7 @@ function renderDispatchList() {
       <div class="dispatch-meta">
         <div class="dispatch-meta-item">📍 <strong>地點：</strong> ${d.location}</div>
         <div class="dispatch-meta-item">🏥 <strong>送往：</strong> ${hospDisplay}</div>
-        <div class="dispatch-meta-item">👥 <strong>被救護人數：</strong> <span style="color: #fbbf24; font-weight: 700;">${patCount} 人</span></div>
+        <div class="dispatch-meta-item">👥 <strong>送醫人數：</strong> <span style="color: #fbbf24; font-weight: 700;">${patCount} 人</span></div>
         <div class="dispatch-meta-item">👨‍🚒 <strong>出勤義消：</strong> <span style="color: #38bdf8; font-weight: 700;">${d.memberNames.join('、')}${d.memberNames.length > 1 ? ` (共${d.memberNames.length}人)` : ''}</span></div>
       </div>
 
@@ -3859,6 +3880,13 @@ function openAdminEditMemberModal(memberId) {
 function openEditDispatchModal(id) {
   const d = dispatches.find(item => item.id === id);
   if (!d) return;
+
+  if (!canEditDispatch(d)) {
+    showToast('權限受限：只有本次出勤之義消同仁或分隊長官具備修改此紀錄之權限！', '🔒');
+    playFeedbackSound('alert');
+    return;
+  }
+
   const modal = document.getElementById('modalNewDispatch');
   if (!modal) return;
   modal.setAttribute('data-edit-id', d.id);
@@ -4549,9 +4577,16 @@ function setupModals() {
 
     const editId = modalDispatch.getAttribute('data-edit-id');
     if (editId) {
-      // 警消或隊員編輯修改既有出勤紀錄
+      // 警消或出勤隊員編輯修改既有出勤紀錄 (限制僅出勤同仁可修改)
       const idx = dispatches.findIndex(d => d.id === editId);
       if (idx !== -1) {
+        if (!canEditDispatch(dispatches[idx])) {
+          showToast('權限受限：只有本次出勤之義消同仁或分隊長官具備修改此紀錄之權限！', '🔒');
+          playFeedbackSound('alert');
+          modalDispatch.classList.remove('open');
+          modalDispatch.removeAttribute('data-edit-id');
+          return;
+        }
         dispatches[idx] = {
           ...dispatches[idx],
           caseNo,
