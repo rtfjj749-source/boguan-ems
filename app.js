@@ -117,8 +117,27 @@ Store.set('cancellation_logs', cancellationLogs);
 let announcements = Store.get('announcements', []);
 let showHistoryAnnouncements = false;
 
+// 跨分頁即時同步監聽 (同一瀏覽器不同分頁或身分登入即時連動)
+window.addEventListener('storage', (e) => {
+  if (!e.key || !e.key.startsWith('ems_')) return;
+  if (e.key === 'ems_attendance') {
+    attendance = Store.get('attendance', []);
+  } else if (e.key === 'ems_dispatches') {
+    dispatches = Store.get('dispatches', []);
+  } else if (e.key === 'ems_announcements') {
+    announcements = Store.get('announcements', []);
+  } else if (e.key === 'ems_members') {
+    members = syncOfficialMembers(Store.get('members', []));
+  } else if (e.key === 'ems_shifts') {
+    shifts = Store.get('shifts', []);
+  } else if (e.key === 'ems_activeDuty') {
+    activeDuty = Store.get('activeDuty', null);
+  }
+  updateAllViews();
+});
+
 // ==========================================
-// 1.1 Supabase 雲端客戶端與即時同步引擎
+// 1.1 Supabase 雲端客戶端與全模組即時同步引擎
 // ==========================================
 let supabaseClient = null;
 const SUPABASE_CONFIG = {
@@ -133,6 +152,8 @@ function initSupabase() {
       updateCloudIndicator(true);
       setupSupabaseRealtime();
       syncFromSupabase();
+      syncAttendanceFromSupabase();
+      syncDispatchesFromSupabase();
       return true;
     } catch (e) {
       console.warn('Supabase init failed:', e);
@@ -152,21 +173,22 @@ function updateCloudIndicator(isConnected) {
     btn.innerHTML = isConnected ? '🟢 雲端同步中' : '☁️ 雲端同步';
   }
   if (badge) {
-    badge.textContent = isConnected ? '🟢 已連線至 Supabase 雲端資料庫' : '🟡 本地暫存模式 (LocalStorage)';
+    badge.textContent = isConnected ? '🟢 已連線至 Supabase 雲端資料庫 (即時雙向同步已啟動)' : '🟡 本地暫存模式 (LocalStorage)';
     badge.style.background = isConnected ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)';
     badge.style.color = isConnected ? '#34d399' : '#fbbf24';
     badge.style.borderColor = isConnected ? '#10b981' : 'rgba(245,158,11,0.4)';
   }
 }
 
-// 從 Supabase 雲端下拉資料
+// 1. 排班表與雲端公告同步
 async function syncFromSupabase() {
   if (!supabaseClient) return;
   try {
     const { data: remoteShifts, error: sErr } = await supabaseClient.from('shifts').select('*');
     if (!sErr && remoteShifts) {
+      // 排班紀錄 (排除公告)
       shifts = remoteShifts
-        .filter(s => s.member_name && s.status !== '缺協勤')
+        .filter(s => s.member_name && s.status !== '缺協勤' && s.vehicle !== '分隊公告')
         .map(s => {
           let v = s.vehicle;
           if (!v || v === '博館91' || v === '博館92' || v.includes('91') || v.includes('92')) {
@@ -187,6 +209,23 @@ async function syncFromSupabase() {
         });
       Store.set('shifts', shifts);
       renderSchedule();
+
+      // 雲端公告提取與同步
+      const remoteAnns = [];
+      remoteShifts.filter(s => s.vehicle === '分隊公告').forEach(row => {
+        try {
+          if (row.notes) {
+            const parsed = JSON.parse(row.notes);
+            if (parsed && parsed.title) remoteAnns.push(parsed);
+          }
+        } catch (e) {}
+      });
+      if (remoteAnns.length > 0) {
+        announcements = remoteAnns;
+        Store.set('announcements', announcements);
+        renderAnnouncements();
+      }
+
       // 同步清理雲端多餘的缺協勤/空紀錄
       if (remoteShifts.length > 0) {
         supabaseClient.from('shifts').delete().or('status.eq.缺協勤,member_name.eq.""').then(() => {});
@@ -197,15 +236,93 @@ async function syncFromSupabase() {
   }
 }
 
-// 建立 Realtime 即時推播監聽
+// 2. 簽到退紀錄與在隊狀態同步 (Attendance)
+async function syncAttendanceFromSupabase() {
+  if (!supabaseClient) return;
+  try {
+    const { data, error } = await supabaseClient.from('attendance').select('*').order('attendance_date', { ascending: false });
+    if (!error && data && data.length > 0) {
+      attendance = data.map(r => ({
+        id: r.id,
+        memberId: r.member_id,
+        memberName: r.member_name,
+        date: r.attendance_date,
+        signIn: r.sign_in_time,
+        signOut: r.sign_out_time || '',
+        hours: Number(r.hours) || 0,
+        dispatches: Number(r.dispatches_count) || 0,
+        patients: Number(r.patients_count) || 0,
+        note: r.notes || ''
+      }));
+      Store.set('attendance', attendance);
+      renderRecentAttendance();
+      updateTodayStatus();
+      updateDutyHero();
+    }
+  } catch (e) {
+    console.warn('Sync attendance error:', e);
+  }
+}
+
+// 3. 救護出勤紀錄同步 (Dispatch Records)
+async function syncDispatchesFromSupabase() {
+  if (!supabaseClient) return;
+  try {
+    const { data, error } = await supabaseClient.from('dispatch_records').select('*').order('dispatch_date', { ascending: false });
+    if (!error && data && data.length > 0) {
+      dispatches = data.map(r => ({
+        id: r.id,
+        caseNo: r.case_no,
+        date: r.dispatch_date,
+        vehicle: r.vehicle,
+        departureTime: r.departure_time,
+        returnTime: r.return_time,
+        location: r.location,
+        memberIds: r.member_ids || [],
+        memberNames: r.member_names || [],
+        resultType: r.result_type,
+        patientCount: r.patient_count || 1,
+        isIdle: !!r.is_idle,
+        chiefComplaint: r.chief_complaint || '',
+        treatments: r.treatments || [],
+        hospital: r.hospital || '無',
+        isSpecial: !!r.is_special,
+        specialTag: r.special_tag || ''
+      }));
+      Store.set('dispatches', dispatches);
+      renderDispatches();
+      updateTodayStatus();
+    }
+  } catch (e) {
+    console.warn('Sync dispatches error:', e);
+  }
+}
+
+// 建立 Realtime 即時推播監聽 (全域多裝置跨頁廣播)
 function setupSupabaseRealtime() {
   if (!supabaseClient) return;
   try {
+    // 監聽排班表與公告異動
     supabaseClient
       .channel('public:shifts')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'shifts' }, () => {
-        showToast('雲端排班表已由其他同仁更新，已即時同步！', '⚡');
         syncFromSupabase();
+      })
+      .subscribe();
+
+    // 監聽簽到打卡與在隊狀態異動
+    supabaseClient
+      .channel('public:attendance')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance' }, () => {
+        syncAttendanceFromSupabase();
+      })
+      .subscribe();
+
+    // 監聽救護出勤案件登記與修改
+    supabaseClient
+      .channel('public:dispatch_records')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatch_records' }, () => {
+        syncDispatchesFromSupabase();
       })
       .subscribe();
   } catch (e) {
@@ -213,7 +330,7 @@ function setupSupabaseRealtime() {
   }
 }
 
-// 將變更同步推送至 Supabase 雲端
+// 將排班變更推至 Supabase
 function pushShiftToSupabase(shift) {
   if (!supabaseClient) return;
   supabaseClient.from('shifts').upsert({
@@ -237,6 +354,92 @@ function deleteShiftFromSupabase(shiftId) {
   supabaseClient.from('shifts').delete().eq('id', shiftId).then(({ error }) => {
     if (error) console.warn('Supabase shift delete error:', error);
   });
+}
+
+// 將出勤紀錄推至 Supabase
+function pushDispatchToSupabase(d) {
+  if (!supabaseClient) return;
+  try {
+    supabaseClient.from('dispatch_records').upsert({
+      id: d.id,
+      case_no: d.caseNo,
+      dispatch_date: d.date,
+      vehicle: d.vehicle,
+      departure_time: d.departureTime,
+      return_time: d.returnTime,
+      location: d.location,
+      member_ids: d.memberIds || [],
+      member_names: d.memberNames || [],
+      result_type: d.resultType,
+      patient_count: d.patientCount || 1,
+      is_idle: !!d.isIdle,
+      chief_complaint: d.chiefComplaint || '',
+      treatments: d.treatments || [],
+      hospital: d.hospital || '無',
+      is_special: !!d.isSpecial,
+      special_tag: d.specialTag || ''
+    }).then(({ error }) => {
+      if (error) console.warn('Supabase dispatch upsert error:', error);
+    });
+  } catch (e) {
+    console.warn(e);
+  }
+}
+
+function deleteDispatchFromSupabase(id) {
+  if (!supabaseClient) return;
+  try {
+    supabaseClient.from('dispatch_records').delete().eq('id', id).then(() => {});
+  } catch (e) {}
+}
+
+// 將簽到退紀錄推至 Supabase
+function pushAttendanceToSupabase(a) {
+  if (!supabaseClient) return;
+  try {
+    supabaseClient.from('attendance').upsert({
+      id: a.id,
+      member_id: a.memberId || null,
+      member_name: a.memberName,
+      attendance_date: a.date,
+      sign_in_time: a.signIn,
+      sign_out_time: a.signOut || '',
+      hours: Number(a.hours) || 0,
+      dispatches_count: Number(a.dispatches) || 0,
+      patients_count: Number(a.patients) || 0,
+      notes: a.note || ''
+    }).then(({ error }) => {
+      if (error) console.warn('Supabase attendance upsert error:', error);
+    });
+  } catch (e) {
+    console.warn(e);
+  }
+}
+
+// 將公告推至 Supabase
+function pushAnnouncementToSupabase(ann) {
+  if (!supabaseClient) return;
+  try {
+    supabaseClient.from('shifts').upsert({
+      id: ann.id,
+      shift_date: ann.createdDateStr ? ann.createdDateStr.split(' ')[0] : getCurrentRocDate(),
+      day_num: 0,
+      day_of_week: '',
+      vehicle: '分隊公告',
+      period: ann.endDate || '',
+      member_name: ann.author || '分隊警消承辦人',
+      shift_type: '公告',
+      status: ann.priority || 'NORMAL',
+      notes: JSON.stringify(ann)
+    }).then(() => {});
+  } catch (e) {}
+}
+
+function deleteAnnouncementFromSupabase(annId) {
+  if (!supabaseClient) return;
+  try {
+    supabaseClient.from('shifts').delete().eq('id', annId).then(() => {});
+  } catch (e) {}
 }
 
 // ==========================================
@@ -457,11 +660,14 @@ function updateDutyHero() {
   const btnOut = document.getElementById('btnPunchOut');
   
   // 檢查當前隊員是否在隊協勤中
-  const isOnDuty = activeDuty && activeDuty.memberId === cur.id;
+  const todayStr = getCurrentRocDate();
+  const activeAttRecord = attendance.find(a => (a.memberId === cur.id || a.memberName === cur.name) && a.date === todayStr && (!a.signOut || a.signOut === '' || a.signOut === '—'));
+  const isOnDuty = (activeDuty && activeDuty.memberId === cur.id) || !!activeAttRecord;
 
   if (isOnDuty) {
+    const signInTime = (activeDuty && activeDuty.memberId === cur.id) ? activeDuty.timeStr : (activeAttRecord?.signIn || '');
     statusPill.className = 'status-pill';
-    statusText.textContent = `協勤值勤中 (已於 ${activeDuty.timeStr} 簽到)`;
+    statusText.textContent = `協勤值勤中 (已於 ${signInTime} 簽到)`;
     if (btnIn) {
       btnIn.disabled = true;
       btnIn.classList.add('disabled');
@@ -502,20 +708,14 @@ function updateTodayStatus() {
   if (dispEl) dispEl.textContent = todayDispCount;
 
   // 2. 目前在隊義消
-  // 檢查 activeDuty (當前登入中隊員簽到) 以及 attendance 中日期為今天且未簽退的紀錄
+  // 檢查 activeDuty 以及 attendance 中日期為今天且未簽退的紀錄
   const onDutyMap = new Map();
-
-  if (activeDuty && activeDuty.memberName) {
-    onDutyMap.set(activeDuty.memberName, {
-      memberName: activeDuty.memberName,
-      timeStr: activeDuty.timeStr || ''
-    });
-  }
 
   attendance.forEach(a => {
     if (a.date === todayStr && (!a.signOut || a.signOut === '—' || a.signOut === '')) {
       if (!onDutyMap.has(a.memberName)) {
         onDutyMap.set(a.memberName, {
+          memberId: a.memberId,
           memberName: a.memberName,
           timeStr: a.signIn || ''
         });
@@ -523,13 +723,23 @@ function updateTodayStatus() {
     }
   });
 
+  if (activeDuty && activeDuty.memberName && activeDuty.dateStr === todayStr) {
+    if (!onDutyMap.has(activeDuty.memberName)) {
+      onDutyMap.set(activeDuty.memberName, {
+        memberId: activeDuty.memberId,
+        memberName: activeDuty.memberName,
+        timeStr: activeDuty.timeStr || ''
+      });
+    }
+  }
+
   const onDutyList = Array.from(onDutyMap.values());
   const onDutyCountEl = document.getElementById('todayOnDutyCount');
   const badgeEl = document.getElementById('todayDutyCountBadge');
   if (onDutyCountEl) onDutyCountEl.textContent = onDutyList.length;
   if (badgeEl) {
     badgeEl.textContent = `在隊 ${onDutyList.length} 人`;
-    badgeEl.style.background = onDutyList.length > 0 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.05)';
+    badgeEl.style.background = onDutyList.length > 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.05)';
     badgeEl.style.color = onDutyList.length > 0 ? '#34d399' : 'var(--text-dim)';
   }
 
@@ -708,12 +918,16 @@ function renderDispatchList() {
           <span class="vehicle-pill ${vehicleClass}">${d.vehicle}</span>
           <span style="font-weight: 600; font-size: 0.95rem;">${d.resultType}</span>
           ${d.specialTag ? `<span style="background: rgba(245,158,11,0.2); color: #fbbf24; border: 1px solid rgba(245,158,11,0.4); font-size: 0.75rem; padding: 2px 8px; border-radius: 99px; font-weight: 700;">${d.specialTag}</span>` : ''}
-          ${isAdm ? `
-            <div style="display: inline-flex; gap: 4px; margin-left: auto;">
-              <button class="btn-admin-edit btn-admin-edit-disp" data-id="${d.id}" style="font-size: 0.72rem; padding: 2px 6px;">✏️ 編輯</button>
-              <button class="btn-admin-delete btn-admin-delete-disp" data-id="${d.id}" style="font-size: 0.72rem; padding: 2px 6px;">🗑️ 刪除</button>
-            </div>
-          ` : ''}
+          <div style="display: inline-flex; gap: 4px; margin-left: auto;">
+            <button class="btn-admin-edit btn-admin-edit-disp" data-id="${d.id}" style="font-size: 0.75rem; padding: 3px 8px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 6px; cursor: pointer;" title="修改此出勤紀錄內容">
+              ✏️ 修改
+            </button>
+            ${isAdm ? `
+              <button class="btn-admin-delete btn-admin-delete-disp" data-id="${d.id}" style="font-size: 0.75rem; padding: 3px 8px; background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 6px; cursor: pointer;" title="刪除此出勤紀錄">
+                🗑️ 刪除
+              </button>
+            ` : ''}
+          </div>
         </div>
         <div style="font-size: 0.85rem; color: var(--text-muted);">
           <span>📅 ${d.date}</span> ｜ <span>⏰ ${d.departureTime} ~ ${d.returnTime}</span>
@@ -736,13 +950,15 @@ function renderDispatchList() {
     container.appendChild(card);
   });
 
-  if (isAdm) {
-    container.querySelectorAll('.btn-admin-edit-disp').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const id = e.currentTarget.getAttribute('data-id');
-        openEditDispatchModal(id);
-      });
+  // 開放所有同仁點擊修改出勤紀錄 (防止手殘 Key 錯)
+  container.querySelectorAll('.btn-admin-edit-disp').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const id = e.currentTarget.getAttribute('data-id');
+      openEditDispatchModal(id);
     });
+  });
+
+  if (isAdm) {
     container.querySelectorAll('.btn-admin-delete-disp').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const id = e.currentTarget.getAttribute('data-id');
@@ -2666,6 +2882,7 @@ function renderAnnouncements() {
         if (confirm(`確定要刪除公告【${ann.title}】嗎？`)) {
           announcements = announcements.filter(a => a.id !== id);
           Store.set('announcements', announcements);
+          deleteAnnouncementFromSupabase(id);
           renderAnnouncements();
           showToast('公告已順利刪除！', '🗑️');
         }
@@ -2734,6 +2951,7 @@ function setupAnnouncementEvents() {
         ann.content = content;
         ann.endDate = endDate;
         ann.isPinned = isPinned;
+        pushAnnouncementToSupabase(ann);
         showToast(`公告【${title}】已成功更新！`, '💾');
       }
     } else {
@@ -2751,6 +2969,7 @@ function setupAnnouncementEvents() {
         isPinned
       };
       announcements.unshift(newAnn);
+      pushAnnouncementToSupabase(newAnn);
       showToast(`重要公告【${title}】已成功發布！有效期限至 ${endDate} 止`, '📢');
     }
 
@@ -2830,7 +3049,7 @@ function minutesToTime(mins) {
 }
 
 // 核心打卡簽到執行邏輯
-function performPunchIn(actualTimeStr = null, reason = '') {
+function performPunchIn(actualTimeStr = null, reason = '', dateVal = null) {
   if (!isLoggedIn()) {
     showToast('請先登入義消同仁帳號方可進行協勤簽到！', '⚠️');
     document.getElementById('modalLogin')?.classList.add('open');
@@ -2838,7 +3057,7 @@ function performPunchIn(actualTimeStr = null, reason = '') {
   }
   const cur = getCurrentMember();
   const now = new Date();
-  const dateStr = getCurrentRocDate();
+  const dateStr = dateVal || getCurrentRocDate();
   const timeStr = actualTimeStr || now.toTimeString().substring(0, 5);
 
   let startTimeMs = Date.now();
@@ -2849,16 +3068,42 @@ function performPunchIn(actualTimeStr = null, reason = '') {
     startTimeMs = d.getTime();
   }
 
+  // 1. 在 attendance 建立在隊簽到紀錄 (signOut 保持為空，代表值勤待命中)
+  let attRecord = attendance.find(a => (a.memberId === cur.id || a.memberName === cur.name) && a.date === dateStr && (!a.signOut || a.signOut === '' || a.signOut === '—'));
+  if (!attRecord) {
+    attRecord = {
+      id: `att-${cur.id}-${Date.now()}`,
+      memberId: cur.id,
+      memberName: cur.name,
+      date: dateStr,
+      signIn: timeStr,
+      signOut: '',
+      hours: 0,
+      dispatches: 0,
+      patients: 0,
+      note: reason || '到隊協勤中'
+    };
+    attendance.unshift(attRecord);
+  } else {
+    attRecord.signIn = timeStr;
+    if (reason) attRecord.note = reason;
+  }
+  Store.set('attendance', attendance);
+  pushAttendanceToSupabase(attRecord);
+
+  // 2. 記錄本機值勤會話 (供計時器使用)
   activeDuty = {
     memberId: cur.id,
     memberName: cur.name,
     startTime: startTimeMs,
     dateStr: dateStr,
     timeStr: timeStr,
+    attendanceId: attRecord.id,
     isBackfilled: !!actualTimeStr,
     backfillReason: reason
   };
   Store.set('activeDuty', activeDuty);
+
   updateDutyHero();
   updateAllViews();
   playFeedbackSound('success');
@@ -2872,12 +3117,24 @@ function performPunchIn(actualTimeStr = null, reason = '') {
 
 // 核心簽退離隊執行邏輯
 function performPunchOut(actualTimeStr = null, reason = '') {
-  if (!activeDuty) return;
   const cur = getCurrentMember();
   const now = new Date();
+  const todayStr = getCurrentRocDate();
   const signOutTime = actualTimeStr || now.toTimeString().substring(0, 5);
 
-  const inMin = timeToMinutes(activeDuty.timeStr);
+  // 尋找此隊員今日尚未簽退的紀錄
+  let attRecord = null;
+  if (activeDuty && activeDuty.attendanceId) {
+    attRecord = attendance.find(a => a.id === activeDuty.attendanceId);
+  }
+  if (!attRecord) {
+    attRecord = attendance.find(a => (a.memberId === cur.id || a.memberName === cur.name) && a.date === todayStr && (!a.signOut || a.signOut === '' || a.signOut === '—'));
+  }
+
+  const signInTime = activeDuty ? activeDuty.timeStr : (attRecord ? attRecord.signIn : '18:00');
+  const dateStr = activeDuty ? activeDuty.dateStr : (attRecord ? attRecord.date : todayStr);
+
+  const inMin = timeToMinutes(signInTime);
   const outMin = timeToMinutes(signOutTime);
   let durationMinutes = outMin - inMin;
   if (durationMinutes < 0) durationMinutes += 24 * 60; // 跨班/跨夜情況
@@ -2886,35 +3143,46 @@ function performPunchOut(actualTimeStr = null, reason = '') {
   const isMealEligible = durationHours >= 4.0;
 
   let note = '即時手機打卡協勤';
-  if (activeDuty.isBackfilled && reason) {
+  if (activeDuty && activeDuty.isBackfilled && reason) {
     note = `補登到隊(${activeDuty.backfillReason})，校正離隊(${reason})`;
-  } else if (activeDuty.isBackfilled) {
+  } else if (activeDuty && activeDuty.isBackfilled) {
     note = `補登到隊協勤 (${activeDuty.backfillReason})`;
   } else if (reason) {
     note = `校正離隊協勤 (${reason})`;
   }
 
-  const newAtt = {
-    id: `att-${Date.now()}`,
-    memberId: cur.id,
-    memberName: cur.name,
-    date: activeDuty.dateStr,
-    signIn: activeDuty.timeStr,
-    signOut: signOutTime,
-    hours: durationHours,
-    dispatches: 1,
-    patients: 1,
-    note: note
-  };
+  if (attRecord) {
+    attRecord.signOut = signOutTime;
+    attRecord.hours = durationHours;
+    attRecord.dispatches = 1;
+    attRecord.patients = 1;
+    attRecord.note = note;
+  } else {
+    attRecord = {
+      id: `att-${Date.now()}`,
+      memberId: cur.id,
+      memberName: cur.name,
+      date: dateStr,
+      signIn: signInTime,
+      signOut: signOutTime,
+      hours: durationHours,
+      dispatches: 1,
+      patients: 1,
+      note: note
+    };
+    attendance.unshift(attRecord);
+  }
 
-  attendance.unshift(newAtt);
   Store.set('attendance', attendance);
+  pushAttendanceToSupabase(attRecord);
 
   cur.totalHours = (Number(cur.totalHours) || 0) + durationHours;
   Store.set('members', members);
 
-  activeDuty = null;
-  Store.set('activeDuty', null);
+  if (activeDuty && activeDuty.memberId === cur.id) {
+    activeDuty = null;
+    Store.set('activeDuty', null);
+  }
 
   updateAllViews();
   playFeedbackSound('success');
@@ -3271,6 +3539,7 @@ function deleteDispatchRecord(id) {
 
   dispatches = dispatches.filter(item => item.id !== id);
   Store.set('dispatches', dispatches);
+  deleteDispatchFromSupabase(id);
   updateAllViews();
   showToast(`已刪除救護出勤紀錄案號 ${d.caseNo}！`, '🗑️');
   playFeedbackSound('success');
@@ -3835,6 +4104,7 @@ function setupModals() {
       const title = modalDispatch.querySelector('h3');
       if (title) title.textContent = '🚑 登記救護出勤紀錄';
       Store.set('dispatches', dispatches);
+      pushDispatchToSupabase(dispatches[idx]);
       modalDispatch.classList.remove('open');
       updateAllViews();
       playFeedbackSound('success');
@@ -3864,6 +4134,7 @@ function setupModals() {
 
     dispatches.unshift(newDisp);
     Store.set('dispatches', dispatches);
+    pushDispatchToSupabase(newDisp);
 
     // 同步升級所有出勤同仁數據 (1~3位全員同步累加榮譽履歷)
     currentDispatchSelectedMembers.forEach(targetMem => {
