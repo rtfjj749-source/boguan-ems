@@ -1,4 +1,4 @@
-import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS, SQUAD_CONFIG } from './data.js?v=20261008_v25';
+import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS, SQUAD_CONFIG } from './data.js?v=20261008_v26';
 
 // ==========================================
 // 1. 資料持久化管理 (LocalStorage)
@@ -2790,9 +2790,18 @@ function openEditDispatchModal(id) {
   currentDispatchSelectedMembers = (d.memberNames || []).map(name => members.find(m => m.name === name)).filter(Boolean);
   initDispatchMemberSelect();
   renderDispatchMemberChips();
-  renderDispatchQuickMemberChips();
+  // renderDispatchQuickMemberChips(); (已依需求移除)
   document.getElementById('inputResultType').value = d.resultType || '送醫';
-  document.getElementById('inputHospital').value = d.hospital || '中國醫藥大學附設醫院';
+  const hospSelect = document.getElementById('inputHospital');
+  if (hospSelect) {
+    const rawHosp = d.hospital || '中國附醫';
+    let matchedOpt = Array.from(hospSelect.options).find(opt => opt.value === rawHosp);
+    if (!matchedOpt && rawHosp.includes('中國')) matchedOpt = Array.from(hospSelect.options).find(opt => opt.value === '中國附醫');
+    if (!matchedOpt && rawHosp.includes('林新')) matchedOpt = Array.from(hospSelect.options).find(opt => opt.value.includes('林新'));
+    if (!matchedOpt && rawHosp.includes('澄清')) matchedOpt = Array.from(hospSelect.options).find(opt => opt.value.includes('澄清'));
+    if (!matchedOpt && rawHosp.includes('榮總')) matchedOpt = Array.from(hospSelect.options).find(opt => opt.value === '台中榮總');
+    hospSelect.value = matchedOpt ? matchedOpt.value : '中國附醫';
+  }
   document.getElementById('inputComplaint').value = d.chiefComplaint || '';
 
   // checkboxes
@@ -2845,7 +2854,7 @@ function renderDispatchMemberChips() {
         const nameToRemove = btn.getAttribute('data-remove-dispatch-member');
         currentDispatchSelectedMembers = currentDispatchSelectedMembers.filter(m => m.name !== nameToRemove);
         renderDispatchMemberChips();
-        renderDispatchQuickMemberChips();
+        // renderDispatchQuickMemberChips(); (已依需求移除)
       });
     });
   }
@@ -2910,7 +2919,7 @@ function renderDispatchQuickMemberChips() {
         currentDispatchSelectedMembers.push(mem);
       }
       renderDispatchMemberChips();
-      renderDispatchQuickMemberChips();
+      // renderDispatchQuickMemberChips(); (已依需求移除)
     });
   });
 }
@@ -2970,7 +2979,7 @@ function initDispatchMemberSelect() {
       currentDispatchSelectedMembers.push(mem);
       select.value = '';
       renderDispatchMemberChips();
-      renderDispatchQuickMemberChips();
+      // renderDispatchQuickMemberChips(); (已依需求移除)
     });
   }
 
@@ -2995,7 +3004,7 @@ function initDispatchMemberSelect() {
       currentDispatchSelectedMembers.push(mem);
       select.value = '';
       renderDispatchMemberChips();
-      renderDispatchQuickMemberChips();
+      // renderDispatchQuickMemberChips(); (已依需求移除)
     });
   }
 }
@@ -3022,7 +3031,7 @@ function setupModals() {
     }
     initDispatchMemberSelect();
     renderDispatchMemberChips();
-    renderDispatchQuickMemberChips();
+    // renderDispatchQuickMemberChips(); (已依需求移除)
     modalDispatch.classList.add('open');
   }
 
