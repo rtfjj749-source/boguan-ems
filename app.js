@@ -1,4 +1,4 @@
-import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS, SQUAD_CONFIG, INITIAL_ANNOUNCEMENTS } from './data.js?v=20261009_v31';
+import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS, SQUAD_CONFIG, INITIAL_ANNOUNCEMENTS } from './data.js?v=20261009_v33';
 
 // ==========================================
 // 1. 資料持久化管理 (LocalStorage)
@@ -6121,42 +6121,249 @@ function exportPasswordTrackingExcel() {
 
 // 初始化所有登入、登出與密碼變更事件監聽器
 function setupAuthSystem() {
-  // 1. 全域快速填入掛載 (供登入視窗內的快捷按鈕使用)
-  window.quickFillLogin = function(username, pwd) {
-    const uInput = document.getElementById('inputLoginUsername');
-    const pInput = document.getElementById('inputLoginPassword');
-    if (uInput) uInput.value = username;
-    if (pInput) pInput.value = pwd;
-    pInput?.focus();
-  };
-
-  const modalLogin = document.getElementById('modalLogin');
+  const portal = document.getElementById('mobileLoginPortal');
   const modalFirst = document.getElementById('modalFirstChangePassword');
   const modalChange = document.getElementById('modalChangePassword');
 
-  // 2. 開啟登入彈窗按鈕
-  document.getElementById('btnOpenLoginModal')?.addEventListener('click', () => {
-    modalLogin?.classList.add('open');
-    document.getElementById('inputLoginUsername')?.focus();
+  function openLoginPortal(mode = 'volunteer') {
+    if (!portal) return;
+    portal.classList.remove('hidden');
+    portal.style.display = 'flex';
+    if (mode === 'volunteer') {
+      const vView = document.getElementById('viewVolunteerLogin');
+      const oView = document.getElementById('viewOfficerLogin');
+      if (vView) vView.style.display = 'block';
+      if (oView) oView.style.display = 'none';
+      populateVolunteerSelect();
+    } else {
+      const vView = document.getElementById('viewVolunteerLogin');
+      const oView = document.getElementById('viewOfficerLogin');
+      if (vView) vView.style.display = 'none';
+      if (oView) oView.style.display = 'block';
+    }
+  }
+  window.openLoginPortal = openLoginPortal;
+
+  function closeLoginPortal() {
+    if (!portal) return;
+    portal.classList.add('hidden');
+    setTimeout(() => {
+      portal.style.display = 'none';
+    }, 280);
+  }
+  window.closeLoginPortal = closeLoginPortal;
+
+  // 動態填入 54 位義消同仁分組姓名選單 (免手動打字)
+  function populateVolunteerSelect() {
+    const sel = document.getElementById('selectVolunteerName');
+    if (!sel) return;
+
+    const squadOrder = ['分隊幹部', '第一小隊', '第二小隊', '第三小隊', '中區'];
+    const groups = {};
+    squadOrder.forEach(sq => { groups[sq] = []; });
+
+    members.forEach(m => {
+      if (m.id === 'm0') return;
+      const sq = m.squad || '第一小隊';
+      if (!groups[sq]) groups[sq] = [];
+      groups[sq].push(m);
+    });
+
+    const lastRemembered = Store.get('last_selected_volunteer', '');
+
+    let html = `<option value="" disabled ${!lastRemembered ? 'selected' : ''}>請按此點選您的姓名...</option>`;
+    squadOrder.forEach(sq => {
+      const list = groups[sq] || [];
+      if (list.length > 0) {
+        html += `<optgroup label="🚒 ${sq} (${list.length}人)">`;
+        list.forEach(m => {
+          const isSel = m.name === lastRemembered ? 'selected' : '';
+          html += `<option value="${m.name}" ${isSel}>${m.name} (${m.level || 'EMT'})</option>`;
+        });
+        html += `</optgroup>`;
+      }
+    });
+    sel.innerHTML = html;
+
+    if (lastRemembered) {
+      updateVolunteerPreview(lastRemembered);
+    }
+  }
+
+  function updateVolunteerPreview(name) {
+    const m = members.find(mem => mem.name === name);
+    const prev = document.getElementById('selectedVolunteerPreview');
+    if (!m || !prev) return;
+    const nameEl = document.getElementById('prevVolName');
+    const roleEl = document.getElementById('prevVolRole');
+    if (nameEl) nameEl.textContent = m.name;
+    if (roleEl) roleEl.textContent = `${m.squad || '隊員'}・${m.level || 'EMT'}`;
+    prev.style.display = 'flex';
+  }
+
+  // 監聽義消姓名下拉切換
+  document.getElementById('selectVolunteerName')?.addEventListener('change', (e) => {
+    const name = e.target.value;
+    updateVolunteerPreview(name);
+    Store.set('last_selected_volunteer', name);
+    document.getElementById('inputVolunteerPin')?.focus();
   });
 
-  // 3. 登出按鈕
-  document.getElementById('btnLogout')?.addEventListener('click', () => {
+  // 密碼顯示切換
+  const btnTogglePin = document.getElementById('btnTogglePinVisibility');
+  const inputPin = document.getElementById('inputVolunteerPin');
+  btnTogglePin?.addEventListener('click', () => {
+    if (!inputPin) return;
+    if (inputPin.type === 'password') {
+      inputPin.type = 'text';
+      btnTogglePin.textContent = '隱藏密碼';
+    } else {
+      inputPin.type = 'password';
+      btnTogglePin.textContent = '顯示密碼';
+    }
+  });
+
+  // 義消同仁一鍵極簡登入
+  document.getElementById('formVolunteerQuickLogin')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const sel = document.getElementById('selectVolunteerName');
+    const name = sel ? sel.value : '';
+    const pin = document.getElementById('inputVolunteerPin')?.value.trim();
+
+    if (!name) {
+      showToast('請先點選您的義消姓名！', '⚠️');
+      sel?.focus();
+      return;
+    }
+
+    const allAccs = getUserAccounts();
+    const matched = allAccs.find(a => a.username === name || a.name === name);
+
+    if (!matched) {
+      showToast('找不到此隊員帳號，請確認姓名是否在名冊中！', '❌');
+      return;
+    }
+
+    if (matched.password !== pin) {
+      showToast('密碼輸入錯誤！隊員預設密碼為 1234', '❌');
+      playFeedbackSound('alert');
+      document.getElementById('inputVolunteerPin')?.focus();
+      return;
+    }
+
+    // 處理「記住此裝置」
+    const remember = document.getElementById('checkRememberLogin')?.checked;
+    Store.set('remember_login', !!remember);
+    Store.set('last_selected_volunteer', name);
+
+    // 首次登入 (預設密碼 1234 強制先變更密碼)
+    if (!matched.isAdmin && !matched.hasChangedPassword) {
+      tempPendingUser = matched;
+      closeLoginPortal();
+      const nameDisp = document.getElementById('firstLoginUserNameDisplay');
+      if (nameDisp) nameDisp.textContent = matched.name;
+      const fNew = document.getElementById('inputNewPasswordFirst');
+      const fConf = document.getElementById('inputConfirmPasswordFirst');
+      if (fNew) fNew.value = '';
+      if (fConf) fConf.value = '';
+      modalFirst?.classList.add('open');
+      showToast(`歡迎【${matched.name}】！首次登入請先設定您的專屬新密碼以策安全。\n(請勿再使用 1234)`, '🛡️');
+      return;
+    }
+
+    // 登入完成
+    currentAuthUser = matched;
+    Store.set('current_auth_user', currentAuthUser);
+    currentMemberId = matched.memberId;
+    Store.set('currentMemberId', currentMemberId);
+
+    closeLoginPortal();
+    updateUserNavbarUi();
+    updateAllViews();
+    playFeedbackSound('success');
+    showToast(`登入成功！歡迎【${matched.name}】進入系統開始協勤`, '👨‍🚒');
+  });
+
+  // 切換警消承辦人登入模式
+  document.getElementById('btnSwitchToOfficerLogin')?.addEventListener('click', () => {
+    const vView = document.getElementById('viewVolunteerLogin');
+    const oView = document.getElementById('viewOfficerLogin');
+    if (vView) vView.style.display = 'none';
+    if (oView) oView.style.display = 'block';
+  });
+
+  document.getElementById('btnSwitchToVolunteerLogin')?.addEventListener('click', () => {
+    const vView = document.getElementById('viewVolunteerLogin');
+    const oView = document.getElementById('viewOfficerLogin');
+    if (vView) vView.style.display = 'block';
+    if (oView) oView.style.display = 'none';
+    populateVolunteerSelect();
+  });
+
+  // 警消承辦人登入表單
+  document.getElementById('formOfficerLogin')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const uInput = document.getElementById('inputOfficerUsername');
+    const pInput = document.getElementById('inputOfficerPassword');
+    const username = uInput?.value.trim() || '';
+    const password = pInput?.value.trim() || '';
+
+    const allAccs = getUserAccounts();
+    const matched = allAccs.find(a => a.username === username || (a.isAdmin && (username === '博館' || username === 'officer' || username === 'admin')));
+
+    if (!matched || !matched.isAdmin) {
+      showToast('非警消管理員帳號！請確認承辦帳號是否正確', '❌');
+      playFeedbackSound('alert');
+      uInput?.focus();
+      return;
+    }
+
+    if (matched.password !== password) {
+      showToast('承辦人管理密碼錯誤！(預設密碼為 0000)', '❌');
+      playFeedbackSound('alert');
+      pInput?.focus();
+      return;
+    }
+
+    currentAuthUser = matched;
+    Store.set('current_auth_user', currentAuthUser);
+    currentMemberId = matched.memberId;
+    Store.set('currentMemberId', currentMemberId);
+    Store.set('remember_login', true);
+
+    closeLoginPortal();
+    updateUserNavbarUi();
+    updateAllViews();
+    playFeedbackSound('success');
+    showToast(`登入成功！【分隊警消承辦人】最高全域管理模式已啟動`, '👮‍♂️');
+  });
+
+  // 開啟登入按鈕
+  document.getElementById('btnOpenLoginModal')?.addEventListener('click', () => {
+    openLoginPortal();
+  });
+
+  // 登出按鈕
+  const handleLogout = () => {
     currentAuthUser = null;
     Store.set('current_auth_user', null);
     currentMemberId = null;
     Store.set('currentMemberId', null);
+    Store.set('remember_login', false);
     updateUserNavbarUi();
     updateAllViews();
-    modalLogin?.classList.add('open');
+    openLoginPortal();
     showToast('您已成功安全登出系統！', '🚪');
-  });
+  };
 
-  // 4. 開啟自行變更密碼彈窗按鈕
+  document.getElementById('btnLogout')?.addEventListener('click', handleLogout);
+  document.getElementById('drawerBtnLogout')?.addEventListener('click', handleLogout);
+
+  // 開啟自行變更密碼彈窗按鈕
   document.getElementById('btnOpenChangePassword')?.addEventListener('click', () => {
     if (!currentAuthUser) {
       showToast('請先登入系統方可變更密碼！', '⚠️');
-      modalLogin?.classList.add('open');
+      openLoginPortal();
       return;
     }
     const oldInput = document.getElementById('inputOldPassword');
@@ -6168,68 +6375,12 @@ function setupAuthSystem() {
     modalChange?.classList.add('open');
   });
 
-  // 5. 登入表單提交處理
-  document.getElementById('formLogin')?.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const uInput = document.getElementById('inputLoginUsername');
-    const pInput = document.getElementById('inputLoginPassword');
-    const username = uInput?.value.trim() || '';
-    const password = pInput?.value.trim() || '';
-
-    const allAccs = getUserAccounts();
-    const matched = allAccs.find(a => a.username === username);
-
-    if (!matched) {
-      showToast('找不到此帳號，請確認中文姓名或代號是否正確！', '❌');
-      playFeedbackSound('alert');
-      uInput?.focus();
-      return;
-    }
-
-    if (matched.password !== password) {
-      showToast('密碼錯誤！隊員預設密碼為 1234，承辦人為 0000', '❌');
-      playFeedbackSound('alert');
-      pInput?.focus();
-      return;
-    }
-
-    // 驗證成功！
-    // 若為義消同仁且尚未變更過密碼 (密碼仍為 1234)：強制先改密碼
-    if (!matched.isAdmin && !matched.hasChangedPassword) {
-      tempPendingUser = matched;
-      modalLogin?.classList.remove('open');
-      
-      const nameDisp = document.getElementById('firstLoginUserNameDisplay');
-      if (nameDisp) nameDisp.textContent = matched.name;
-      const fNew = document.getElementById('inputNewPasswordFirst');
-      const fConf = document.getElementById('inputConfirmPasswordFirst');
-      if (fNew) fNew.value = '';
-      if (fConf) fConf.value = '';
-      
-      modalFirst?.classList.add('open');
-      showToast(`歡迎【${matched.name}】！首次登入請先設定您的專屬新密碼以策安全。\n(請勿再使用 1234)`, '🛡️');
-      return;
-    }
-
-    // 登入完成 (已變更過密碼，或警消承辦人)
-    currentAuthUser = matched;
-    Store.set('current_auth_user', currentAuthUser);
-    currentMemberId = matched.memberId;
-    Store.set('currentMemberId', currentMemberId);
-
-    modalLogin?.classList.remove('open');
-    updateUserNavbarUi();
-    updateAllViews();
-    playFeedbackSound('success');
-    showToast(`登入成功！歡迎【${matched.name}】${matched.isAdmin ? '管理長官' : '同仁'}進入系統`, matched.isAdmin ? '👮‍♂️' : '👨‍🚒');
-  });
-
   // 6. 首次登入強制變更密碼提交處理
   document.getElementById('formFirstChangePassword')?.addEventListener('submit', (e) => {
     e.preventDefault();
     if (!tempPendingUser) {
       modalFirst?.classList.remove('open');
-      modalLogin?.classList.add('open');
+      window.openLoginPortal?.('volunteer');
       return;
     }
 
@@ -6375,9 +6526,11 @@ document.addEventListener('DOMContentLoaded', () => {
   startClock();
   initSupabase();
   updateUserNavbarUi();
-  updateAllViews();
-  if (!currentAuthUser) {
-    document.getElementById('modalLogin')?.classList.add('open');
+  const remember = Store.get('remember_login', false);
+  if (currentAuthUser && remember) {
+    window.closeLoginPortal?.();
+  } else {
+    window.openLoginPortal?.('volunteer');
   }
 });
 

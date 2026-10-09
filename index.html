@@ -23,7 +23,7 @@
   <!-- Supabase JS Client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
-  <link rel="stylesheet" href="styles.css?v=20261009_v32">
+  <link rel="stylesheet" href="styles.css?v=20261009_v33">
 </head>
 <body>
 
@@ -1951,35 +1951,114 @@
   </div>
 
   
-    <!-- ==================== MODAL AUTH 1: 隊員登入 ==================== -->
-  <div id="modalLogin" class="modal-overlay">
-    <div class="modal-box" style="max-width: 400px;">
-      <div class="modal-title-row">
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
-          <span style="font-size: 1.3rem;">🚑</span>
-          <h3 style="font-size: 1.15rem; font-weight: 800;">博館救護義消 - 身分驗證登入</h3>
+  <!-- ==================== 獨立義消專屬全螢幕登入入口 (Dedicated Volunteer Mobile Login Portal) ==================== -->
+  <div id="mobileLoginPortal" class="mobile-login-portal">
+    <div class="login-portal-backdrop"></div>
+    <div class="login-portal-card">
+      
+      <!-- 頂部隊徽與大標題 -->
+      <div class="login-portal-header">
+        <div class="login-badge-wrapper">
+          <img src="logo.png" alt="博館高級救護隊徽章" class="login-badge-img">
         </div>
-        <button type="button" class="btn-close-modal" data-close-modal="modalLogin">&times;</button>
+        <h1 class="login-portal-title">義消博館分隊</h1>
+        <p class="login-portal-subtitle">救護義消智慧協勤系統</p>
       </div>
 
-      <form id="formLogin">
-        <div class="form-group">
-          <label>帳號</label>
-          <input type="text" id="inputLoginUsername" class="form-input" placeholder="請輸入帳號" required autofocus>
-        </div>
+      <!-- 模式 A: 義消同仁極簡免手打字登入 (預設推薦) -->
+      <div id="viewVolunteerLogin" class="login-view-block">
+        <form id="formVolunteerQuickLogin">
+          <!-- 步驟 1: 選擇我的姓名 -->
+          <div class="login-field-group">
+            <label for="selectVolunteerName">
+              <span class="step-num">1</span>
+              <span>點選您的姓名 (54位義消同仁)</span>
+            </label>
+            <div class="custom-select-wrap">
+              <select id="selectVolunteerName" class="form-select login-select" required>
+                <option value="" disabled selected>請按此點選您的姓名...</option>
+                <!-- 由 JS 動態依幹部、第一小隊、第二小隊、第三小隊、中區分組載入 -->
+              </select>
+            </div>
+            <!-- 選中隊員即時頭像卡片預覽 -->
+            <div id="selectedVolunteerPreview" class="volunteer-preview-pill" style="display: none;">
+              <span class="preview-avatar" id="prevVolAvatar">👨‍🚒</span>
+              <div class="preview-text">
+                <span class="preview-name" id="prevVolName">謝易庭</span>
+                <span class="preview-role" id="prevVolRole">第一小隊・EMT-2</span>
+              </div>
+              <span class="preview-check">✓ 已選擇</span>
+            </div>
+          </div>
 
-        <div class="form-group">
-          <label>密碼</label>
-          <input type="password" id="inputLoginPassword" class="form-input" placeholder="請輸入密碼" required>
-        </div>
+          <!-- 步驟 2: 輸入 4 碼密碼 -->
+          <div class="login-field-group" style="margin-top: 1.15rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.45rem;">
+              <label for="inputVolunteerPin" style="margin: 0;">
+                <span class="step-num">2</span>
+                <span>輸入密碼 (預設 1234)</span>
+              </label>
+              <button type="button" id="btnTogglePinVisibility" class="btn-text-toggle-pin">顯示密碼</button>
+            </div>
+            <div class="pin-input-wrap">
+              <input type="password" id="inputVolunteerPin" class="form-input login-pin-input" inputmode="numeric" placeholder="請輸入密碼 (預設 1234)" required maxlength="20">
+            </div>
+          </div>
 
-        <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.25rem;">
-          <button type="button" class="btn-secondary" data-close-modal="modalLogin">取消</button>
-          <button type="submit" class="btn-primary" style="background: linear-gradient(135deg, #0284c7, #06b6d4); border: none; font-weight: 700;">
-            🔐 確認登入
+          <!-- 記住此裝置 -->
+          <div class="login-remember-row">
+            <label class="login-checkbox-label">
+              <input type="checkbox" id="checkRememberLogin" checked>
+              <span class="checkbox-text">記住此裝置（下次開啟自動登入，免再輸密碼）</span>
+            </label>
+          </div>
+
+          <!-- 一鍵登入大按鈕 -->
+          <button type="submit" id="btnSubmitVolunteerLogin" class="btn-portal-submit">
+            <span>🚀 登入系統開始協勤</span>
           </button>
+        </form>
+
+        <div class="login-divider">
+          <span>其他身分切換</span>
         </div>
-      </form>
+
+        <button type="button" id="btnSwitchToOfficerLogin" class="btn-switch-login-mode">
+          <span>👮‍♂️ 警消承辦人／長官管理模式登入 ➔</span>
+        </button>
+      </div>
+
+      <!-- 模式 B: 警消承辦人/最高管理模式登入 -->
+      <div id="viewOfficerLogin" class="login-view-block" style="display: none;">
+        <form id="formOfficerLogin">
+          <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 12px; padding: 0.85rem 1rem; margin-bottom: 1.25rem; font-size: 0.82rem; color: #fbbf24; display: flex; align-items: center; gap: 0.65rem;">
+            <span style="font-size: 1.4rem;">👮‍♂️</span>
+            <div>
+              <strong>分隊警消承辦人最高管理權限入口</strong>
+              <div style="font-size: 0.74rem; opacity: 0.85; margin-top: 2px;">具備全隊公文報表產製與全域協勤數據調整權限</div>
+            </div>
+          </div>
+
+          <div class="login-field-group">
+            <label for="inputOfficerUsername">管理帳號</label>
+            <input type="text" id="inputOfficerUsername" class="form-input" style="height: 48px; font-size: 1rem; border-radius: 12px;" placeholder="請輸入管理帳號 (如: 博館)" required>
+          </div>
+
+          <div class="login-field-group" style="margin-top: 1rem;">
+            <label for="inputOfficerPassword">管理密碼</label>
+            <input type="password" id="inputOfficerPassword" class="form-input" style="height: 48px; font-size: 1rem; border-radius: 12px;" placeholder="請輸入密碼 (預設: 0000)" required>
+          </div>
+
+          <button type="submit" class="btn-portal-submit" style="margin-top: 1.35rem; background: linear-gradient(135deg, #f59e0b, #d97706); box-shadow: 0 6px 20px rgba(245, 158, 11, 0.35);">
+            <span>👑 登入警消最高管理模式</span>
+          </button>
+        </form>
+
+        <button type="button" id="btnSwitchToVolunteerLogin" class="btn-switch-login-mode" style="margin-top: 1.25rem;">
+          <span>⬅ 返回【義消同仁快捷免手打登入】</span>
+        </button>
+      </div>
+
     </div>
   </div>
 
@@ -2319,6 +2398,6 @@
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- 主邏輯 JS (附防快取版本) -->
-  <script type="module" src="app.js?v=20261009_v32"></script>
+  <script type="module" src="app.js?v=20261009_v33"></script>
 </body>
 </html>
