@@ -1,4 +1,4 @@
-import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS, SQUAD_CONFIG, INITIAL_ANNOUNCEMENTS } from './data.js?v=20261009_v34';
+import { INITIAL_MEMBERS, INITIAL_ATTENDANCE, INITIAL_DISPATCHES, INITIAL_SHIFTS, BADGE_DEFINITIONS, SQUAD_CONFIG, INITIAL_ANNOUNCEMENTS } from './data.js?v=20261009_v35';
 
 // ==========================================
 // 1. 資料持久化管理 (LocalStorage)
@@ -4015,7 +4015,7 @@ function renderDispatchQuickMemberChips() {
 function initDispatchMemberSelect() {
   const select = document.getElementById('inputDispatchMemberSelect');
   if (!select) return;
-  select.innerHTML = '<option value="">➕ 從全隊 54 位義消名冊選擇同仁加入...</option>';
+  select.innerHTML = '<option value="">➕ 點此選擇出勤同仁...</option>';
 
   const groups = {
     'cadre': { label: '🏛️ 分隊幹部', el: document.createElement('optgroup') },
@@ -4467,6 +4467,31 @@ function setupModals() {
         modalClaim.removeAttribute('data-officer-proxy');
       }
     });
+  });
+
+  // 點選遮罩背景關閉彈窗 (行動裝置友善防呆)
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        overlay.classList.remove('open');
+        if (overlay.id === 'modalClaimShift') {
+          modalClaim.removeAttribute('data-officer-proxy');
+        }
+      }
+    });
+  });
+
+  // 監聽彈窗開關以鎖定背景滾動，徹底杜絕手機背景跑版黑邊
+  const modalObserver = new MutationObserver(() => {
+    const hasOpenModal = document.querySelector('.modal-overlay.open');
+    if (hasOpenModal) {
+      document.body.classList.add('modal-open');
+    } else {
+      document.body.classList.remove('modal-open');
+    }
+  });
+  document.querySelectorAll('.modal-overlay').forEach(el => {
+    modalObserver.observe(el, { attributes: true, attributeFilter: ['class'] });
   });
 
   // 表單 1: 登記或修改出勤案件
