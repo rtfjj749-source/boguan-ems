@@ -1243,6 +1243,8 @@ function renderDispatchList() {
     const patCount = (d.patientCount !== undefined && d.patientCount !== null) ? d.patientCount : (d.isIdle ? 0 : 1);
 
     const canEdit = canEditDispatch(d);
+    card.setAttribute('data-id', d.id);
+    card.title = canEdit ? '點擊編輯此出勤案件內容' : '點擊檢視此出勤案件詳情 (唯讀)';
 
     card.innerHTML = `
       <div class="dispatch-header">
@@ -1251,14 +1253,18 @@ function renderDispatchList() {
           <span class="vehicle-pill ${vehicleClass}">${d.vehicle}</span>
           <span style="font-weight: 600; font-size: 0.95rem;">${d.resultType}</span>
           ${d.specialTag ? `<span style="background: rgba(245,158,11,0.2); color: #fbbf24; border: 1px solid rgba(245,158,11,0.4); font-size: 0.75rem; padding: 2px 8px; border-radius: 99px; font-weight: 700;">${d.specialTag}</span>` : ''}
-          <div style="display: inline-flex; gap: 4px; margin-left: auto;">
+          <div style="display: inline-flex; gap: 6px; margin-left: auto;">
             ${canEdit ? `
-              <button class="btn-admin-edit btn-admin-edit-disp" data-id="${d.id}" style="font-size: 0.75rem; padding: 3px 8px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 6px; cursor: pointer;" title="修改此出勤紀錄內容 (限本趟出勤義消或承辦人)">
+              <button type="button" class="btn-admin-edit btn-admin-edit-disp" data-id="${d.id}" style="font-size: 0.75rem; padding: 4px 10px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 6px; cursor: pointer;" title="修改此出勤紀錄內容 (限本趟出勤義消或承辦人)">
                 ✏️ 修改
               </button>
-            ` : ''}
+            ` : `
+              <button type="button" class="btn-view-disp" data-id="${d.id}" style="font-size: 0.75rem; padding: 4px 10px; background: rgba(148, 163, 184, 0.15); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 6px; cursor: pointer;" title="點擊檢視案件詳情 (唯讀模式)">
+                👁️ 檢視
+              </button>
+            `}
             ${isAdm ? `
-              <button class="btn-admin-delete btn-admin-delete-disp" data-id="${d.id}" style="font-size: 0.75rem; padding: 3px 8px; background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 6px; cursor: pointer;" title="刪除此出勤紀錄">
+              <button type="button" class="btn-admin-delete btn-admin-delete-disp" data-id="${d.id}" style="font-size: 0.75rem; padding: 4px 10px; background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 6px; cursor: pointer;" title="刪除此出勤紀錄">
                 🗑️ 刪除
               </button>
             ` : ''}
@@ -1283,12 +1289,20 @@ function renderDispatchList() {
         ${tagsHtml}
       </div>
     `;
+
+    // 點擊卡片本體即可開啟案件（排除點擊刪除按鈕）
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.btn-admin-delete-disp')) return;
+      openEditDispatchModal(d.id);
+    });
+
     container.appendChild(card);
   });
 
-  // 開放所有同仁點擊修改出勤紀錄 (防止手殘 Key 錯)
-  container.querySelectorAll('.btn-admin-edit-disp').forEach(btn => {
+  // 獨立按鈕點擊事件 (阻止冒泡以防重複觸發)
+  container.querySelectorAll('.btn-admin-edit-disp, .btn-view-disp').forEach(btn => {
     btn.addEventListener('click', (e) => {
+      e.stopPropagation();
       const id = e.currentTarget.getAttribute('data-id');
       openEditDispatchModal(id);
     });
@@ -1297,6 +1311,7 @@ function renderDispatchList() {
   if (isAdm) {
     container.querySelectorAll('.btn-admin-delete-disp').forEach(btn => {
       btn.addEventListener('click', (e) => {
+        e.stopPropagation();
         const id = e.currentTarget.getAttribute('data-id');
         deleteDispatchRecord(id);
       });
@@ -2702,6 +2717,11 @@ function renderSummaryReports() {
     dispatchTbody.innerHTML = '';
     dispatches.slice(0, 30).forEach((d, idx) => {
       const tr = document.createElement('tr');
+      tr.style.cursor = 'pointer';
+      tr.title = '點擊檢視出勤紀錄詳情';
+      tr.addEventListener('click', () => {
+        openEditDispatchModal(d.id);
+      });
       tr.innerHTML = `
         <td>${idx + 1}</td>
         <td>${d.caseNo}</td>
@@ -3806,22 +3826,119 @@ function setDispatchVehicle(vehicleVal) {
   });
 }
 
+// 設定出勤案件 Modal 唯讀/編輯狀態
+function setDispatchModalReadOnly(isReadOnly, caseVehicle = '91') {
+  const modal = document.getElementById('modalNewDispatch');
+  if (!modal) return;
+  const form = document.getElementById('formNewDispatch');
+  if (!form) return;
+
+  const isEdit = !!modal.getAttribute('data-edit-id');
+  const title = modal.querySelector('h3');
+  if (title) {
+    if (isReadOnly) {
+      title.innerHTML = `👁️ 檢視救護出勤紀錄 <span style="font-size: 0.85rem; color: #94a3b8; font-weight: normal;">(${caseVehicle}・唯讀查看)</span>`;
+    } else if (isEdit) {
+      title.innerHTML = `✏️ 編輯救護出勤紀錄 <span style="font-size: 0.85rem; color: #38bdf8; font-weight: normal;">(${caseVehicle})</span>`;
+    } else {
+      title.innerHTML = '🚑 登記救護出勤紀錄';
+    }
+  }
+
+  // 唯讀提示橫幅
+  let notice = document.getElementById('dispatchReadOnlyNotice');
+  if (isReadOnly) {
+    if (!notice) {
+      notice = document.createElement('div');
+      notice.id = 'dispatchReadOnlyNotice';
+      form.insertBefore(notice, form.firstChild);
+    }
+    notice.style.display = 'flex';
+    notice.style.alignItems = 'center';
+    notice.style.gap = '8px';
+    notice.style.background = 'rgba(56, 189, 248, 0.12)';
+    notice.style.border = '1px solid rgba(56, 189, 248, 0.3)';
+    notice.style.borderRadius = '8px';
+    notice.style.padding = '0.65rem 0.9rem';
+    notice.style.marginBottom = '1rem';
+    notice.style.fontSize = '0.85rem';
+    notice.style.color = '#bae6fd';
+    notice.innerHTML = '<span>🔒</span><span><strong>唯讀檢視模式</strong>：僅限本趟隨車出勤同仁或分隊幹部可修改內容。</span>';
+  } else {
+    if (notice) notice.style.display = 'none';
+  }
+
+  // 表單輸入欄位啟用/禁用
+  const inputIds = [
+    'inputDispatchDate',
+    'inputDepartureTime',
+    'inputReturnTime',
+    'inputLocation',
+    'inputResultType',
+    'inputPatientCount',
+    'inputHospital',
+    'inputComplaint'
+  ];
+  inputIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.disabled = isReadOnly;
+      el.style.opacity = isReadOnly ? '0.85' : '1';
+      el.style.cursor = isReadOnly ? 'default' : 'auto';
+    }
+  });
+
+  // 車輛單選方框
+  document.querySelectorAll('#dispatchVehicleGroup .vehicle-box-btn').forEach(btn => {
+    btn.disabled = isReadOnly;
+    btn.style.pointerEvents = isReadOnly ? 'none' : 'auto';
+    btn.style.cursor = isReadOnly ? 'default' : 'pointer';
+  });
+
+  // 出勤義消下拉選單與新增區塊
+  const memberSelect = document.getElementById('inputDispatchMemberSelect');
+  if (memberSelect) {
+    memberSelect.disabled = isReadOnly;
+    if (memberSelect.parentElement) {
+      memberSelect.parentElement.style.display = isReadOnly ? 'none' : 'block';
+    }
+  }
+
+  // 現場處置項目核取方塊
+  document.querySelectorAll('input[name="treatment"]').forEach(cb => {
+    cb.disabled = isReadOnly;
+    const parentLabel = cb.closest('label');
+    if (parentLabel) {
+      parentLabel.style.cursor = isReadOnly ? 'default' : 'pointer';
+    }
+  });
+
+  // 按鈕區
+  const btnSubmit = form.querySelector('button[type="submit"]');
+  const btnClose = form.querySelector('button[data-close-modal="modalNewDispatch"]');
+
+  if (btnSubmit) {
+    btnSubmit.style.display = isReadOnly ? 'none' : 'inline-block';
+    if (!isReadOnly) {
+      btnSubmit.textContent = isEdit ? '💾 儲存修改內容' : '確認儲存並記錄';
+    }
+  }
+
+  if (btnClose) {
+    btnClose.textContent = isReadOnly ? '關閉檢視' : '取消';
+  }
+}
+
 function openEditDispatchModal(id) {
   const d = dispatches.find(item => item.id === id);
   if (!d) return;
-
-  if (!canEditDispatch(d)) {
-    showToast('權限受限：只有本次出勤之義消同仁或分隊長官具備修改此紀錄之權限！', '🔒');
-    playFeedbackSound('alert');
-    return;
-  }
 
   const modal = document.getElementById('modalNewDispatch');
   if (!modal) return;
   modal.setAttribute('data-edit-id', d.id);
   
-  const title = modal.querySelector('h3');
-  if (title) title.textContent = `✏️ 編輯救護出勤紀錄 (${d.vehicle || '91'})`;
+  const canEdit = canEditDispatch(d);
+  setDispatchModalReadOnly(!canEdit, d.vehicle || '91');
 
   if (document.getElementById('inputDispatchDate')) {
     document.getElementById('inputDispatchDate').value = d.date || getCurrentRocDate();
@@ -3833,10 +3950,17 @@ function openEditDispatchModal(id) {
   document.getElementById('inputDepartureTime').value = normalizeTimeStr(d.departureTime) || '20:00';
   document.getElementById('inputReturnTime').value = normalizeTimeStr(d.returnTime) || '21:10';
   document.getElementById('inputLocation').value = d.location || '';
+  
   currentDispatchSelectedMembers = (d.memberNames || []).map(name => members.find(m => m.name === name)).filter(Boolean);
+  (d.memberNames || []).forEach(name => {
+    if (!currentDispatchSelectedMembers.some(m => m.name === name)) {
+      currentDispatchSelectedMembers.push({ id: 'temp_' + name, name: name, level: 'EMT', squad: '' });
+    }
+  });
+
   initDispatchMemberSelect();
-  renderDispatchMemberChips();
-  // renderDispatchQuickMemberChips(); (已依需求移除)
+  renderDispatchMemberChips(!canEdit);
+
   document.getElementById('inputResultType').value = d.resultType || '送醫';
   const patInput = document.getElementById('inputPatientCount');
   if (patInput) {
@@ -3862,6 +3986,10 @@ function openEditDispatchModal(id) {
   // checkboxes
   document.querySelectorAll('input[name="treatment"]').forEach(cb => {
     cb.checked = d.treatments && d.treatments.includes(cb.value);
+    const parentLabel = cb.closest('label');
+    if (parentLabel) {
+      parentLabel.style.opacity = (!canEdit && !cb.checked) ? '0.45' : '1';
+    }
   });
 
   modal.classList.add('open');
@@ -3889,36 +4017,37 @@ function deleteDispatchRecord(id) {
 
 let currentDispatchSelectedMembers = [];
 
-function renderDispatchMemberChips() {
+function renderDispatchMemberChips(isReadOnly = false) {
   const container = document.getElementById('dispatchSelectedMembersChips');
   const countBadge = document.getElementById('dispatchSelectedCountBadge');
   if (!container) return;
 
   if (currentDispatchSelectedMembers.length === 0) {
-    container.innerHTML = '<span style="color: var(--text-dim); font-size: 0.78rem;">尚未選擇義消（請由下方快速點選或下拉選取同仁隨車出勤）</span>';
+    container.innerHTML = '<span style="color: var(--text-dim); font-size: 0.78rem;">尚未選擇義消（請由下方下拉選取同仁隨車出勤）</span>';
   } else {
     container.innerHTML = currentDispatchSelectedMembers.map(m => `
       <span class="selected-member-chip">
         <span>👨‍🚒 ${m.name}</span>
         <span style="font-size: 0.7rem; opacity: 0.85; font-weight: normal;">(${m.level || 'EMT'})</span>
-        <button type="button" class="btn-remove-chip" data-remove-dispatch-member="${m.name}" title="移除此位出勤同仁">&times;</button>
+        ${isReadOnly ? '' : `<button type="button" class="btn-remove-chip" data-remove-dispatch-member="${m.name}" title="移除此位出勤同仁">&times;</button>`}
       </span>
     `).join('');
 
-    container.querySelectorAll('[data-remove-dispatch-member]').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.preventDefault();
-        const nameToRemove = btn.getAttribute('data-remove-dispatch-member');
-        currentDispatchSelectedMembers = currentDispatchSelectedMembers.filter(m => m.name !== nameToRemove);
-        renderDispatchMemberChips();
-        // renderDispatchQuickMemberChips(); (已依需求移除)
+    if (!isReadOnly) {
+      container.querySelectorAll('[data-remove-dispatch-member]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          const nameToRemove = btn.getAttribute('data-remove-dispatch-member');
+          currentDispatchSelectedMembers = currentDispatchSelectedMembers.filter(m => m.name !== nameToRemove);
+          renderDispatchMemberChips(false);
+        });
       });
-    });
+    }
   }
 
   if (countBadge) {
     const count = currentDispatchSelectedMembers.length;
-    countBadge.textContent = `已選擇 ${count} 人`;
+    countBadge.textContent = isReadOnly ? `出勤同仁共 ${count} 人` : `已選擇 ${count} 人`;
     countBadge.style.color = count > 0 ? '#38bdf8' : 'var(--text-muted)';
   }
 }
@@ -4047,8 +4176,9 @@ function setupModals() {
       return;
     }
     modalDispatch.removeAttribute('data-edit-id');
+    setDispatchModalReadOnly(false, '91');
     const title = modalDispatch.querySelector('h3');
-    if (title) title.textContent = '🚑 登記救護出勤紀錄';
+    if (title) title.innerHTML = '🚑 登記救護出勤紀錄';
     
     const curRocDate = getCurrentRocDate();
     const dateNoDashes = curRocDate.replace(/-/g, '');
