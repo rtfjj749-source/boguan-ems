@@ -145,7 +145,7 @@
 
           <div class="duty-timer-title">本次在隊協勤累積時間</div>
           <div id="dutyTimerDisplay" class="duty-timer-display">00:00:00</div>
-          <div id="clockLive" class="clock-live">當前時間：2026-10-07 11:15:00</div>
+          <div id="clockLive" class="clock-live">當前系統時間 (24小時制)：2026-10-09 15:20:00</div>
 
           <div class="punch-actions" style="margin-top: 0.85rem; display: flex; gap: 1rem;">
             <button id="btnPunchIn" class="btn-punch btn-punch-in" style="flex: 1; padding: 0.95rem 1rem;">
@@ -1174,12 +1174,12 @@
 
         <div class="grid-2">
           <div class="form-group">
-            <label>出勤時間</label>
-            <input type="time" id="inputDepartureTime" class="form-input" required value="20:00">
+            <label>出勤時間 (24小時制)</label>
+            <input type="text" id="inputDepartureTime" class="form-input time-24h" required placeholder="例如: 20:00" value="20:00" maxlength="5">
           </div>
           <div class="form-group">
-            <label>返隊時間</label>
-            <input type="time" id="inputReturnTime" class="form-input" required value="21:10">
+            <label>返隊時間 (24小時制)</label>
+            <input type="text" id="inputReturnTime" class="form-input time-24h" required placeholder="例如: 21:10" value="21:10" maxlength="5">
           </div>
         </div>
 
@@ -1556,8 +1556,8 @@
             <input type="text" id="inputPunchInDate" class="form-input" required>
           </div>
           <div class="form-group">
-            <label>到隊時間 (可手動調整)</label>
-            <input type="time" id="inputPunchInTime" class="form-input" required>
+            <label>到隊時間 (24小時制，可手動調整)</label>
+            <input type="text" id="inputPunchInTime" class="form-input time-24h" required placeholder="例如: 18:00" maxlength="5">
           </div>
         </div>
 
@@ -1567,7 +1567,7 @@
         </div>
 
         <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 0.65rem 0.85rem; margin-bottom: 1.25rem; font-size: 0.78rem; color: #cbd5e1; line-height: 1.5;">
-          💡 <strong>簽到說明：</strong>系統預設帶入當前現在時間。若稍早忙碌未及時打卡，可直接於上方手動修改時間後送出。
+          💡 <strong>簽到說明：</strong>系統預設帶入當前現在時間 (24小時制)。若稍早忙碌未及時打卡，可直接於上方手動修改時間後送出。
         </div>
 
         <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
@@ -1605,8 +1605,8 @@
               <input type="text" id="inputPunchOutSignInDisplay" class="form-input" readonly>
             </div>
             <div class="form-group">
-              <label>離隊簽退時間 (可修改)</label>
-              <input type="time" id="inputPunchOutTime" class="form-input" required>
+              <label>離隊簽退時間 (24小時制)</label>
+              <input type="text" id="inputPunchOutTime" class="form-input time-24h" required placeholder="例如: 22:00" maxlength="5">
             </div>
           </div>
         </div>
@@ -1618,12 +1618,12 @@
           </div>
           <div class="grid-2">
             <div class="form-group">
-              <label>實際到隊時間 <span style="color: #ef4444;">*</span></label>
-              <input type="time" id="inputPunchOutBackfillInTime" class="form-input" value="18:00">
+              <label>實際到隊時間 (24小時制) <span style="color: #ef4444;">*</span></label>
+              <input type="text" id="inputPunchOutBackfillInTime" class="form-input time-24h" value="18:00" placeholder="例如: 18:00" maxlength="5">
             </div>
             <div class="form-group">
-              <label>實際離隊時間 <span style="color: #ef4444;">*</span></label>
-              <input type="time" id="inputPunchOutBackfillOutTime" class="form-input" value="22:00">
+              <label>實際離隊時間 (24小時制) <span style="color: #ef4444;">*</span></label>
+              <input type="text" id="inputPunchOutBackfillOutTime" class="form-input time-24h" value="22:00" placeholder="例如: 22:00" maxlength="5">
             </div>
           </div>
         </div>
@@ -1735,12 +1735,12 @@
 
         <div class="grid-2">
           <div class="form-group">
-            <label>到隊時間 <span style="color: #ef4444;">*</span></label>
-            <input type="time" id="adminAttSignIn" class="form-input" required value="18:00">
+            <label>到隊時間 (24小時制) <span style="color: #ef4444;">*</span></label>
+            <input type="text" id="adminAttSignIn" class="form-input time-24h" required value="18:00" placeholder="例如: 18:00" maxlength="5">
           </div>
           <div class="form-group">
-            <label>離隊時間 <span style="color: #ef4444;">*</span></label>
-            <input type="time" id="adminAttSignOut" class="form-input" required value="23:00">
+            <label>離隊時間 (24小時制) <span style="color: #ef4444;">*</span></label>
+            <input type="text" id="adminAttSignOut" class="form-input time-24h" required value="23:00" placeholder="例如: 23:00" maxlength="5">
           </div>
         </div>
 

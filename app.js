@@ -935,7 +935,7 @@ function renderDispatchList() {
           </div>
         </div>
         <div style="font-size: 0.85rem; color: var(--text-muted);">
-          <span>📅 ${d.date}</span> ｜ <span>⏰ ${d.departureTime} ~ ${d.returnTime}</span>
+          <span>📅 ${d.date}</span> ｜ <span>⏰ ${normalizeTimeStr(d.departureTime)} ~ ${normalizeTimeStr(d.returnTime)}</span>
         </div>
       </div>
 
@@ -1558,7 +1558,7 @@ function executeEmergencyCancel(shiftId, reasonCategory, reasonNote) {
     vehicle: shift.vehicle,
     memberName: prevMember,
     reason: reasonCategory + (reasonNote ? ` (${reasonNote})` : ''),
-    timestamp: new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })
+    timestamp: `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`
   };
   cancellationLogs.unshift(newLog);
   if (cancellationLogs.length > 20) cancellationLogs.pop();
@@ -3006,10 +3006,10 @@ function updateAllViews() {
 function startClock() {
   setInterval(() => {
     const now = new Date();
-    // 格式化當前時間
+    // 格式化當前時間 (24小時制)
     const timeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
     const clockEl = document.getElementById('clockLive');
-    if (clockEl) clockEl.textContent = `當前系統時間：${timeStr}`;
+    if (clockEl) clockEl.textContent = `當前系統時間 (24小時制)：${timeStr}`;
 
     // 如果當前隊員處於打卡狀態，計算時數
     const cur = getCurrentMember();
@@ -3054,6 +3054,56 @@ function minutesToTime(mins) {
   return `${h}:${m}`;
 }
 
+// 全域智慧 24 小時制時間正規化函數 (支援 "8" -> "08:00", "20" -> "20:00", "2015" -> "20:15", "20:15" -> "20:15")
+function normalizeTimeStr(tStr) {
+  if (!tStr) return '';
+  const s = cleanFlexibleTimeStr(tStr);
+  if (s.includes(':')) {
+    const [h, m] = s.split(':').map(Number);
+    if (!isNaN(h)) {
+      const clampH = Math.min(23, Math.max(0, h));
+      const clampM = Math.min(59, Math.max(0, m || 0));
+      return `${String(clampH).padStart(2, '0')}:${String(clampM).padStart(2, '0')}`;
+    }
+  }
+  if (/^\d{4}$/.test(s)) {
+    const h = Math.min(23, Number(s.slice(0, 2)));
+    const m = Math.min(59, Number(s.slice(2, 4)));
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+  if (/^\d{3}$/.test(s)) {
+    const h = Number(s.slice(0, 1));
+    const m = Math.min(59, Number(s.slice(1, 3)));
+    return `0${h}:${String(m).padStart(2, '0')}`;
+  }
+  if (/^\d{1,2}$/.test(s)) {
+    const h = Math.min(23, Number(s));
+    return `${String(h).padStart(2, '0')}:00`;
+  }
+  return s;
+}
+
+// 綁定全站 24 小時制輸入框，即時防呆與自動格式化
+function attachTime24hFormatters() {
+  document.querySelectorAll('input.time-24h').forEach(input => {
+    if (input._bound24h) return;
+    input._bound24h = true;
+
+    input.addEventListener('blur', () => {
+      if (input.value.trim()) {
+        input.value = normalizeTimeStr(input.value);
+      }
+    });
+
+    input.addEventListener('input', () => {
+      const v = cleanFlexibleTimeStr(input.value);
+      if (/^\d{4}$/.test(v)) {
+        input.value = `${v.slice(0, 2)}:${v.slice(2, 4)}`;
+      }
+    });
+  });
+}
+
 // 核心打卡簽到執行邏輯
 function performPunchIn(actualTimeStr = null, reason = '', dateVal = null) {
   if (!isLoggedIn()) {
@@ -3064,11 +3114,12 @@ function performPunchIn(actualTimeStr = null, reason = '', dateVal = null) {
   const cur = getCurrentMember();
   const now = new Date();
   const dateStr = dateVal || getCurrentRocDate();
-  const timeStr = actualTimeStr || now.toTimeString().substring(0, 5);
+  const timeStr = actualTimeStr ? normalizeTimeStr(actualTimeStr) : `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
   let startTimeMs = Date.now();
   if (actualTimeStr) {
-    const [h, m] = actualTimeStr.split(':').map(Number);
+    const norm = normalizeTimeStr(actualTimeStr);
+    const [h, m] = norm.split(':').map(Number);
     const d = new Date();
     d.setHours(h, m, 0, 0);
     startTimeMs = d.getTime();
@@ -3126,7 +3177,7 @@ function performPunchOut(actualTimeStr = null, reason = '') {
   const cur = getCurrentMember();
   const now = new Date();
   const todayStr = getCurrentRocDate();
-  const signOutTime = actualTimeStr || now.toTimeString().substring(0, 5);
+  const signOutTime = actualTimeStr ? normalizeTimeStr(actualTimeStr) : `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
   // 尋找此隊員今日尚未簽退的紀錄
   let attRecord = null;
@@ -3227,7 +3278,7 @@ function setupPunchEvents() {
 
     const cur = getCurrentMember();
     const now = new Date();
-    const nowTimeStr = now.toTimeString().substring(0, 5);
+    const nowTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
     if (inputInName) inputInName.value = `${cur.name} (${cur.level || 'EMT'})`;
     if (inputInDate) inputInDate.value = getCurrentRocDate();
@@ -3241,7 +3292,9 @@ function setupPunchEvents() {
   formIn?.addEventListener('submit', (e) => {
     e.preventDefault();
     if (!isLoggedIn()) return;
-    const timeVal = inputInTime?.value || '';
+    const now = new Date();
+    const fallbackTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const timeVal = normalizeTimeStr(inputInTime?.value || '') || fallbackTime;
     const dateVal = inputInDate?.value || getCurrentRocDate();
     const noteVal = inputInNote?.value || '正常到隊協勤';
 
@@ -3256,10 +3309,10 @@ function setupPunchEvents() {
 
     if (activeDuty) {
       inMin = timeToMinutes(activeDuty.timeStr);
-      outMin = timeToMinutes(inputOutTime?.value || '00:00');
+      outMin = timeToMinutes(normalizeTimeStr(inputOutTime?.value || '00:00'));
     } else {
-      inMin = timeToMinutes(inputBInTime?.value || '18:00');
-      outMin = timeToMinutes(inputBOutTime?.value || '22:00');
+      inMin = timeToMinutes(normalizeTimeStr(inputBInTime?.value || '18:00'));
+      outMin = timeToMinutes(normalizeTimeStr(inputBOutTime?.value || '22:00'));
     }
 
     let diff = outMin - inMin;
@@ -3294,7 +3347,7 @@ function setupPunchEvents() {
 
     const cur = getCurrentMember();
     const now = new Date();
-    const nowTimeStr = now.toTimeString().substring(0, 5);
+    const nowTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
     if (inputOutName) inputOutName.value = `${cur.name} (${cur.level || 'EMT'})`;
 
@@ -3310,7 +3363,7 @@ function setupPunchEvents() {
       if (boxNormal) boxNormal.style.display = 'none';
       if (boxBackfill) boxBackfill.style.display = 'block';
       if (inputBInTime) {
-        // 預設 4 小時前
+        // 預設 4 小時前 (24小時制)
         const fourHrsAgo = Math.max(0, now.getHours() * 60 + now.getMinutes() - 240);
         inputBInTime.value = minutesToTime(fourHrsAgo);
       }
@@ -3330,12 +3383,12 @@ function setupPunchEvents() {
     const noteVal = inputOutNote?.value || '協勤完畢離隊';
 
     if (activeDuty) {
-      const chosenOutTime = inputOutTime?.value || '';
+      const chosenOutTime = normalizeTimeStr(inputOutTime?.value || '');
       performPunchOut(chosenOutTime, noteVal);
     } else {
       // 補登模式送出
-      const inTime = inputBInTime?.value || '18:00';
-      const outTime = inputBOutTime?.value || '22:00';
+      const inTime = normalizeTimeStr(inputBInTime?.value || '18:00');
+      const outTime = normalizeTimeStr(inputBOutTime?.value || '22:00');
       const inMin = timeToMinutes(inTime);
       const outMin = timeToMinutes(outTime);
       let diff = outMin - inMin;
@@ -3509,8 +3562,8 @@ function openEditDispatchModal(id) {
 
   document.getElementById('inputCaseNo').value = d.caseNo;
   document.getElementById('inputVehicle').value = d.vehicle || '博館91';
-  document.getElementById('inputDepartureTime').value = d.departureTime || '20:00';
-  document.getElementById('inputReturnTime').value = d.returnTime || '21:10';
+  document.getElementById('inputDepartureTime').value = normalizeTimeStr(d.departureTime) || '20:00';
+  document.getElementById('inputReturnTime').value = normalizeTimeStr(d.returnTime) || '21:10';
   document.getElementById('inputLocation').value = d.location || '';
   currentDispatchSelectedMembers = (d.memberNames || []).map(name => members.find(m => m.name === name)).filter(Boolean);
   initDispatchMemberSelect();
@@ -3727,6 +3780,9 @@ function setupModals() {
   const modalDispatch = document.getElementById('modalNewDispatch');
   const modalClaim = document.getElementById('modalClaimShift');
 
+  // 全站 24 小時制輸入框防呆與自動格式化掛載
+  attachTime24hFormatters();
+
   // 開啟出勤 Modal (重設為新增狀態)
   function openCreateDispatchModal() {
     if (!isLoggedIn()) {
@@ -3739,6 +3795,19 @@ function setupModals() {
     if (title) title.textContent = '🚑 登記救護出勤紀錄';
     document.getElementById('inputCaseNo').value = `1151007-${String(dispatches.length + 1).padStart(2, '0')}`;
     document.getElementById('inputVehicle').value = '博館91';
+    
+    // 預設當前 24 小時制時間
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    const depTime24 = `${hh}:${mm}`;
+    const retDate = new Date(now.getTime() + 45 * 60 * 1000);
+    const retTime24 = `${String(retDate.getHours()).padStart(2, '0')}:${String(retDate.getMinutes()).padStart(2, '0')}`;
+    const inDep = document.getElementById('inputDepartureTime');
+    const inRet = document.getElementById('inputReturnTime');
+    if (inDep) inDep.value = depTime24;
+    if (inRet) inRet.value = retTime24;
+
     document.getElementById('inputResultType').value = '送醫';
     document.getElementById('inputHospital').value = '中國附醫';
     const patInput = document.getElementById('inputPatientCount');
@@ -4088,8 +4157,8 @@ function setupModals() {
     e.preventDefault();
     const caseNo = document.getElementById('inputCaseNo').value;
     const vehicle = document.getElementById('inputVehicle').value;
-    const departureTime = document.getElementById('inputDepartureTime').value;
-    const returnTime = document.getElementById('inputReturnTime').value;
+    const departureTime = normalizeTimeStr(document.getElementById('inputDepartureTime').value) || '20:00';
+    const returnTime = normalizeTimeStr(document.getElementById('inputReturnTime').value) || '21:10';
     const location = document.getElementById('inputLocation').value;
     if (currentDispatchSelectedMembers.length === 0) {
       showToast('請至少選擇一位出勤義消同仁！', '⚠️');
@@ -4303,8 +4372,8 @@ function setupModals() {
 
   // 警消最高權限 - 自動試算在隊時數
   document.getElementById('btnAdminAttCalcHours')?.addEventListener('click', () => {
-    const sIn = document.getElementById('adminAttSignIn').value;
-    const sOut = document.getElementById('adminAttSignOut').value;
+    const sIn = normalizeTimeStr(document.getElementById('adminAttSignIn').value);
+    const sOut = normalizeTimeStr(document.getElementById('adminAttSignOut').value);
     if (!sIn || !sOut) return;
     const [h1, m1] = sIn.split(':').map(Number);
     const [h2, m2] = sOut.split(':').map(Number);
@@ -4322,8 +4391,8 @@ function setupModals() {
     const memberId = document.getElementById('adminAttMemberSelect').value;
     const mem = members.find(m => m.id === memberId) || members[0];
     const date = document.getElementById('adminAttDate').value.trim();
-    const signIn = document.getElementById('adminAttSignIn').value;
-    const signOut = document.getElementById('adminAttSignOut').value;
+    const signIn = normalizeTimeStr(document.getElementById('adminAttSignIn').value) || '18:00';
+    const signOut = normalizeTimeStr(document.getElementById('adminAttSignOut').value) || '23:00';
     const hours = parseFloat(document.getElementById('adminAttHours').value) || 0;
     const dispatchesCount = parseInt(document.getElementById('adminAttDispatches').value, 10) || 0;
     const patientsCount = parseInt(document.getElementById('adminAttPatients').value, 10) || 0;
