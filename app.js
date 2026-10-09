@@ -1819,13 +1819,12 @@ function validateShiftBooking(targetMember, date, vehicle, period, shiftType, ig
 function openEmergencyCancelModal(shiftId) {
   const shift = shifts.find(s => s.id === shiftId);
   if (!shift) return;
-  const cur = getCurrentMember();
-  const isOfficer = isCurrentOfficer();
   const isAdm = isSuperAdmin();
 
-  // 權限檢查：本人、幹部或警消承辦人
-  if (shift.memberName !== cur.name && !isOfficer && !isAdm) {
-    alert('非本人或分隊幹部/承辦人無法取消此班次！');
+  // 權限檢查：僅能取消自己（或警消承辦人特權）
+  if (shift.memberName !== cur.name && !isAdm) {
+    alert('⚠️【權限限制】您只能取消自己的排班預約！若需協助請聯繫警消承辦人。');
+    playFeedbackSound('alert');
     return;
   }
 
@@ -2228,8 +2227,8 @@ function openDayDetailModal(day) {
   const isOfficer = isCurrentOfficer();
   const isAdm = isSuperAdmin();
 
-  document.getElementById('dayDetailTitle').textContent = `📅 ${calCurrentYear}年${monthStr}月${dayStr}日 (週${weekday}) 彈性協勤排班詳情`;
-  document.getElementById('dayDetailSub').textContent = `博館分隊 救護待命與值班台 ｜ 自由填寫彈性時段（如 09-13、07-15、17-22）｜ 先填先站位`;
+  document.getElementById('dayDetailTitle').textContent = `📅 ${calCurrentYear}年${monthStr}月${dayStr}日 (週${weekday}) 協勤排班明細`;
+  document.getElementById('dayDetailSub').textContent = `博館分隊 救護待命與值班台 ｜ 當日排班同仁名單與時段分佈`;
 
   // 1. 渲染全日 07:00 ~ 23:00 即時人力負載時間軸分佈條
   const timelineContainer = document.getElementById('dayTimelineContainer');
@@ -2314,7 +2313,7 @@ function openDayDetailModal(day) {
   const container = document.getElementById('dayDetailShiftsList');
   container.innerHTML = '';
 
-  // 2. 顯示「當日已登記彈性班次即時明細」
+  // 2. 顯示當日已登記排班同仁名單（依時段排序）
   const registeredShifts = dayShifts.filter(s => s.memberName && s.status !== '缺席' && s.status !== '缺協勤');
   if (registeredShifts.length > 0) {
     const regSection = document.createElement('div');
@@ -2329,188 +2328,45 @@ function openDayDetailModal(day) {
       const durationHours = tInfo.valid ? ((tInfo.endMin - tInfo.startMin) / 60).toFixed(1) : '4.0';
 
       regListHtml += `
-        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.45rem 0.65rem; background: rgba(15,23,42,0.5); border: 1px solid ${isMine ? 'rgba(56,189,248,0.5)' : 'rgba(255,255,255,0.06)'}; border-radius: 6px; margin-bottom: 0.35rem; flex-wrap: wrap; gap: 0.4rem;">
-          <div style="display: flex; align-items: center; gap: 0.6rem;">
-            <span style="font-size: 0.85rem;">${isDesk ? '🏢' : '🚑'}</span>
-            <strong style="font-size: 0.88rem; color: #fff;">${memObj?.avatar || '👨‍🚒'} ${s.memberName}</strong>
-            <span style="font-size: 0.72rem; color: ${isDesk ? '#c084fc' : '#38bdf8'}; font-weight: 600;">${isDesk ? '協勤值班' : '救護待命'}</span>
-            <span style="font-size: 0.75rem; color: #fbbf24; background: rgba(245,158,11,0.15); padding: 1px 6px; border-radius: 4px; font-weight: 700;">⏱️ ${s.period} (${durationHours}h)</span>
-            ${isMine ? '<span style="font-size: 0.68rem; background: #0284c7; color: #fff; padding: 1px 5px; border-radius: 3px;">您本人</span>' : ''}
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.55rem 0.75rem; background: rgba(15,23,42,0.6); border: 1px solid ${isMine ? 'rgba(56,189,248,0.5)' : 'rgba(255,255,255,0.08)'}; border-radius: 8px; margin-bottom: 0.45rem; flex-wrap: wrap; gap: 0.5rem;">
+          <div style="display: flex; align-items: center; gap: 0.65rem;">
+            <span style="font-size: 1rem;">${isDesk ? '🏢' : '🚑'}</span>
+            <strong style="font-size: 0.92rem; color: #fff;">${memObj?.avatar || '👨‍🚒'} ${s.memberName}</strong>
+            <span style="font-size: 0.72rem; color: ${isDesk ? '#c084fc' : '#38bdf8'}; font-weight: 600; background: ${isDesk ? 'rgba(192,132,252,0.15)' : 'rgba(56,189,248,0.15)'}; padding: 2px 7px; border-radius: 4px;">${isDesk ? '協勤值班' : '救護待命'}</span>
+            <span style="font-size: 0.75rem; color: #fbbf24; background: rgba(245,158,11,0.15); padding: 2px 8px; border-radius: 4px; font-weight: 700;">⏱️ ${s.period} (${durationHours}h)</span>
+            ${isMine ? '<span style="font-size: 0.68rem; background: #0284c7; color: #fff; padding: 2px 6px; border-radius: 4px; font-weight: 700;">★ 您本人</span>' : ''}
           </div>
           <div>
-            ${(isMine || isOfficer || isAdm) ? `
-              <button class="btn-seat-cancel" data-shift-id="${s.id}" style="font-size: 0.72rem; padding: 3px 8px;">
-                🚨 遇突發狀況取消預定
+            ${(isMine || isAdm) ? `
+              <button class="btn-seat-cancel" data-shift-id="${s.id}" style="font-size: 0.75rem; padding: 3px 10px; color: #f87171; border: 1px solid rgba(239,68,68,0.4); background: rgba(239,68,68,0.1); border-radius: 6px; cursor: pointer;">
+                ❌ 取消預約
               </button>
-            ` : '<span style="font-size: 0.7rem; color: var(--text-muted);">已站位確認</span>'}
+            ` : '<span style="font-size: 0.72rem; color: var(--text-muted);">已站位確認</span>'}
           </div>
         </div>
       `;
     });
 
     regSection.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-        <span style="font-size: 0.82rem; font-weight: 700; color: #38bdf8;">📋 今日已站位同仁清單（共 ${registeredShifts.length} 位）</span>
-        <span style="font-size: 0.72rem; color: var(--text-muted);">支援自訂彈性時段，遇突發狀況可隨時取消釋出</span>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.65rem;">
+        <span style="font-size: 0.85rem; font-weight: 700; color: #38bdf8;">📋 今日已登記排班同仁名單（共 ${registeredShifts.length} 位）</span>
+        <span style="font-size: 0.72rem; color: var(--text-muted);">救護上限 4 位 ｜ 值班上限 1 位</span>
       </div>
       ${regListHtml}
     `;
     container.appendChild(regSection);
+  } else {
+    const emptyBox = document.createElement('div');
+    emptyBox.style.cssText = 'text-align: center; padding: 2.2rem 1rem; background: rgba(30,41,59,0.35); border-radius: 10px; border: 1px dashed var(--border-subtle); margin-bottom: 0.75rem;';
+    emptyBox.innerHTML = `
+      <div style="font-size: 2rem; margin-bottom: 0.5rem;">📅</div>
+      <div style="font-size: 0.95rem; font-weight: 700; color: #f1f5f9; margin-bottom: 0.35rem;">今日尚無同仁登記排班</div>
+      <div style="font-size: 0.8rem; color: var(--text-muted);">歡迎點擊下方「➕ 登記協勤排班時段」進行登記！</div>
+    `;
+    container.appendChild(emptyBox);
   }
 
-  // 3. 整理常用彈性時段站位卡片 (包含09-15, 09-13, 07-15, 17-22, 18-23等)
-  const defaultPeriods = ['09:00-15:00', '09:00-13:00', '07:00-15:00', '17:00-22:00', '18:00-23:00', '14:00-18:00', '08:00-12:00'];
-  const periodSet = new Set(defaultPeriods);
-  dayShifts.forEach(s => {
-    if (s.period) periodSet.add(s.period);
-  });
-
-  const sortedPeriods = Array.from(periodSet).sort((a, b) => {
-    const tA = parseTimePeriod(a).startMin;
-    const tB = parseTimePeriod(b).startMin;
-    return tA - tB;
-  });
-
-  sortedPeriods.forEach(period => {
-    const pInfo = parseTimePeriod(period);
-    const durationHours = pInfo.valid ? ((pInfo.endMin - pInfo.startMin) / 60).toFixed(1) : '4.0';
-    const cap = getSlotCapacityStatus(dateKey, period);
-
-    const card = document.createElement('div');
-    card.className = 'slot-group-card';
-
-    // (A) 救護席位 (4席)
-    let emsSeatsHtml = '';
-    for (let i = 0; i < 4; i++) {
-      const occ = cap.emsOccupants[i];
-      if (occ) {
-        const memObj = members.find(m => m.name === occ.memberName);
-        const isMine = occ.memberName === curUser.name;
-        emsSeatsHtml += `
-          <div class="slot-seat-box occupied ${isMine ? 'is-mine' : ''}">
-            <div>
-              <span class="seat-num-badge">救護席位 ${i + 1}</span>
-              <div class="seat-member-name">${memObj?.avatar || '👨‍🚒'} ${occ.memberName}</div>
-              <div class="seat-member-role">${memObj?.level || 'EMT-2'} (${occ.shiftType})</div>
-              ${isMine ? '<span class="seat-mine-tag">★ 您本人</span>' : ''}
-            </div>
-            ${(isMine || isOfficer || isAdm) ? `
-              <button class="btn-seat-cancel" data-shift-id="${occ.id}">
-                🚨 遇突發取消預定
-              </button>
-            ` : ''}
-          </div>
-        `;
-      } else {
-        emsSeatsHtml += `
-          <div class="slot-seat-box vacant">
-            <div>
-              <span class="seat-num-badge">救護席位 ${i + 1}</span>
-              <div style="font-weight: 700; font-size: 0.85rem; color: #34d399; margin: 4px 0;">🟢 開放站位</div>
-              <div style="font-size: 0.7rem; color: var(--text-muted);">尚無同仁登記</div>
-            </div>
-            <button class="btn-seat-claim" data-date="${dateKey}" data-period="${period}" data-category="救護">
-              ⚡ 先填先站位
-            </button>
-          </div>
-        `;
-      }
-    }
-
-    // (B) 值班席位 (1席)
-    let deskSeatHtml = '';
-    const deskOcc = cap.deskOccupants[0];
-    if (deskOcc) {
-      const memObj = members.find(m => m.name === deskOcc.memberName);
-      const isMine = deskOcc.memberName === curUser.name;
-      const isMakeup = (deskOcc.vehicle && deskOcc.vehicle.includes('補定訓')) || (deskOcc.shiftType && deskOcc.shiftType.includes('補定訓'));
-      deskSeatHtml = `
-        <div class="slot-seat-box occupied desk-occupied ${isMine ? 'is-mine' : ''}">
-          <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; gap: 0.5rem;">
-            <div style="text-align: left;">
-              <span class="seat-num-badge">值班台專屬席位 (上限 1 位)</span>
-              <div class="seat-member-name">${memObj?.avatar || '🏢'} ${deskOcc.memberName} <span style="font-size: 0.78rem; color: #c084fc;">(${deskOcc.shiftType || '值班'})</span></div>
-              <div class="seat-member-role">${memObj?.role || '隊員'} ｜ ${isMakeup ? '⚠️ 補定訓值班 (固定4小時)' : '常規值班台待命'}</div>
-            </div>
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
-              ${isMine ? '<span class="seat-mine-tag">★ 您本人</span>' : ''}
-              ${(isMine || isOfficer || isAdm) ? `
-                <button class="btn-seat-cancel" data-shift-id="${deskOcc.id}" style="width: auto; padding: 4px 10px;">
-                  🚨 遇突發取消預定
-                </button>
-              ` : ''}
-            </div>
-          </div>
-        </div>
-      `;
-    } else {
-      deskSeatHtml = `
-        <div class="slot-seat-box vacant" style="min-height: auto; padding: 0.85rem 1rem;">
-          <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; gap: 0.5rem;">
-            <div style="text-align: left;">
-              <span class="seat-num-badge">值班台專屬席位 (上限 1 位)</span>
-              <div style="font-weight: 700; font-size: 0.9rem; color: #34d399;">🟢 值班台空缺中・開放站位</div>
-              <div style="font-size: 0.72rem; color: var(--text-muted);">一個時段僅限 1 位（採先填先站位原則）</div>
-            </div>
-            <button class="btn-seat-claim" data-date="${dateKey}" data-period="${period}" data-category="值班" style="width: auto; padding: 5px 14px; font-size: 0.8rem;">
-              ⚡ 先填先站位 (值班認領)
-            </button>
-          </div>
-        </div>
-      `;
-    }
-
-    card.innerHTML = `
-      <div class="slot-group-header">
-        <div class="slot-period-tag">
-          <span>⏰ ${period}</span>
-          <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 500;">(${durationHours} 小時彈性時段)</span>
-        </div>
-        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-          <span class="capacity-pill ${cap.emsFull ? 'full' : 'available'}">
-            🚑 救護 ${cap.emsOccupants.length}/4 ${cap.emsFull ? '🔴滿額' : '🟢可站位'}
-          </span>
-          <span class="capacity-pill ${cap.deskFull ? 'full' : 'available'}">
-            🏢 值班 ${cap.deskOccupants.length}/1 ${cap.deskFull ? '🔴滿額' : '🟢可站位'}
-          </span>
-        </div>
-      </div>
-
-      <div class="slot-section-title">
-        <span style="color: #38bdf8;">🚑 協勤救護（限額 4 位・隊上待命隨車出勤・先填先站位）</span>
-        <span style="color: var(--text-muted); font-size: 0.75rem;">
-          ${cap.emsFull ? '⚠️ 席次已滿' : `尚餘 ${cap.emsAvailable} 個席位`}
-        </span>
-      </div>
-      <div class="slot-seats-grid-4">
-        ${emsSeatsHtml}
-      </div>
-
-      <div class="slot-section-title">
-        <span style="color: #c084fc;">🏢 協勤值班（限額 1 位・值班台・先填先站位）</span>
-        <span style="color: var(--text-muted); font-size: 0.75rem;">
-          ${cap.deskFull ? '⚠️ 席次已滿' : '尚有 1 個席位'}
-        </span>
-      </div>
-      <div class="slot-seats-grid-1">
-        ${deskSeatHtml}
-      </div>
-    `;
-
-    container.appendChild(card);
-  });
-
-  // 綁定「⚡ 先填先站位」點擊事件
-  container.querySelectorAll('.btn-seat-claim').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const dt = btn.getAttribute('data-date');
-      const pr = btn.getAttribute('data-period');
-      const cat = btn.getAttribute('data-category');
-      claimSlotInstantly(dt, pr, cat);
-    });
-  });
-
-  // 綁定「🚨 遇突發狀況取消預定」點擊事件
+  // 綁定「❌ 取消預約」點擊事件
   container.querySelectorAll('.btn-seat-cancel').forEach(btn => {
     btn.addEventListener('click', () => {
       const shiftId = btn.getAttribute('data-shift-id');
@@ -2576,7 +2432,7 @@ function renderScheduleListView() {
     const vDisplay = isDesk ? s.vehicle : '🚑 救護協勤 (隊上待命)';
     
     let actionBtnHtml = '';
-    if (isMine || isOfficer) {
+    if (isMine || isSuperAdmin()) {
       actionBtnHtml = `
         <button class="btn-secondary btn-cancel-shift" data-shift-id="${s.id}" style="font-size: 0.72rem; padding: 2px 8px; color: #f87171; border-color: rgba(239,68,68,0.4);">
           ❌ 取消預約
@@ -4425,17 +4281,14 @@ function setupModals() {
   // 監聽勤務類別變更 (連動補定訓警語與預設值)
   const selectCat = document.getElementById('inputShiftCategory');
   const alertMakeup = document.getElementById('makeupTrainingAlertBox');
-  const selectType = document.getElementById('inputShiftType');
 
   selectCat?.addEventListener('change', (e) => {
     const val = e.target.value;
     if (val.includes('補定訓')) {
       if (alertMakeup) alertMakeup.style.display = 'block';
-      if (selectType) selectType.value = '補定訓';
       window.syncFlexiblePeriodInputs('18:00', '22:00');
     } else {
       if (alertMakeup) alertMakeup.style.display = 'none';
-      if (selectType) selectType.value = val.includes('值班') ? '幹部值班' : '自排班';
     }
     updateFlexibleTimeInputs(true);
   });
@@ -4724,7 +4577,10 @@ function setupModals() {
       return;
     }
     const period = parsedTime.formatted;
-    const shiftType = document.getElementById('inputShiftType').value;
+    // 自動判定勤務性質（免手動填選性質說明）
+    let shiftType = '自排班';
+    if (catVal.includes('補定訓')) shiftType = '補定訓';
+    else if (catVal.includes('值班')) shiftType = '幹部值班';
     
     let memberName = document.getElementById('inputShiftMemberName').value;
     if (isSuperAdmin()) {

@@ -23,7 +23,7 @@
   <!-- Supabase JS Client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
-  <link rel="stylesheet" href="styles.css?v=20261009_v39">
+  <link rel="stylesheet" href="styles.css?v=20261009_v40">
 </head>
 <body>
 
@@ -1414,15 +1414,6 @@
           2. 如登記後臨時取消，依分隊規定視為「缺席定訓」，亦不可再次補值班！
         </div>
 
-        <div class="form-group">
-          <label>性質說明</label>
-          <select id="inputShiftType" class="form-select">
-            <option value="自排班">自排班</option>
-            <option value="幹部值班">幹部值班</option>
-            <option value="補定訓">補定訓登記</option>
-          </select>
-        </div>
-
         <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem;">
           <button type="button" class="btn-secondary" data-close-modal="modalClaimShift">取消</button>
           <button type="submit" id="btnSubmitClaimShift" class="btn-success">送出登記排班 (先填先站位)</button>
@@ -1437,7 +1428,7 @@
       <div class="modal-title-row">
         <div>
           <h3 style="font-size: 1.25rem; font-weight: 700;" id="dayDetailTitle">📅 115年10月01日 (四) 排班詳情</h3>
-          <p style="font-size: 0.8rem; color: var(--text-muted);" id="dayDetailSub">博館分隊 救護待命與值班台協勤 ｜ 全日彈性時段與先填先站位看板</p>
+          <p style="font-size: 0.8rem; color: var(--text-muted);" id="dayDetailSub">博館分隊 救護待命與值班台協勤 ｜ 當日排班名單與時段分佈</p>
         </div>
         <button class="btn-close-modal" data-close-modal="modalDayDetail">&times;</button>
       </div>
@@ -1445,10 +1436,10 @@
       <!-- 席次規則快速提醒條 -->
       <div style="background: rgba(6,182,212,0.1); border: 1px solid rgba(6,182,212,0.25); border-radius: 8px; padding: 0.65rem 1rem; margin-bottom: 0.85rem; font-size: 0.8rem; color: #bae6fd; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         <div>
-          ⚡ <strong>彈性自訂時段・先填先站位：</strong>配合工作自由填寫時段（如 09-13、07-15、17-22 等），協勤值班限 <strong>1 位</strong> ｜ 協勤救護最多 <strong>4 位</strong>！
+          ⚡ <strong>協勤排班人數上限：</strong>救護待命 <strong>上限 4 位</strong> ｜ 協勤值班 <strong>上限 1 位</strong>。
         </div>
         <div style="font-size: 0.75rem; color: #34d399; font-weight: 600;">
-          🟢 遇突發狀況可隨時取消釋出名額
+          🟢 遇突發狀況可隨時取消預約
         </div>
       </div>
 
@@ -1462,7 +1453,7 @@
       <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-subtle); padding-top: 1rem; flex-wrap: wrap; gap: 0.5rem;">
         <button type="button" class="btn-secondary" data-close-modal="modalDayDetail">關閉</button>
         <button type="button" id="btnDayDetailAddShift" class="btn-primary">
-          <span>➕ 自由登記彈性時段 (例如 09-13、07-15、17-22)</span>
+          <span>➕ 登記協勤排班時段</span>
         </button>
       </div>
     </div>
@@ -2311,6 +2302,6 @@
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- 主邏輯 JS (附防快取版本) -->
-  <script type="module" src="app.js?v=20261009_v39"></script>
+  <script type="module" src="app.js?v=20261009_v40"></script>
 </body>
 </html>
