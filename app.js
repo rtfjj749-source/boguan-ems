@@ -89,6 +89,8 @@ let currentMemberId = currentAuthUser ? currentAuthUser.memberId : null;
 let activeDuty = Store.get('activeDuty', null);
 let cancellationLogs = Store.get('cancellation_logs', []);
 Store.set('cancellation_logs', cancellationLogs);
+let announcements = Store.get('announcements', []);
+let showHistoryAnnouncements = false;
 
 // ==========================================
 // 1.1 Supabase 雲端客戶端與即時同步引擎
@@ -2053,6 +2055,8 @@ function setupCalendarControls() {
       Store.set('dispatches', []);
       cancellationLogs = [];
       Store.set('cancellation_logs', []);
+      announcements = [];
+      Store.set('announcements', []);
       activeDuty = null;
       Store.set('activeDuty', null);
 
@@ -2361,10 +2365,297 @@ function renderOfficerExecutiveDashboard() {
   }
 }
 
+// ==========================================
+// 3.8 分隊重要事項公告欄 (具顯示期限管制)
+// ==========================================
+function isAnnouncementActive(ann) {
+  if (!ann || !ann.endDate) return true;
+  const todayStr = getCurrentRocDate();
+  return ann.endDate >= todayStr;
+}
+
+function getDaysRemaining(endDateStr) {
+  if (!endDateStr) return null;
+  const parts = endDateStr.split('-').map(Number);
+  if (parts.length !== 3) return null;
+  const targetDate = new Date(parts[0] + 1911, parts[1] - 1, parts[2], 23, 59, 59);
+  const now = new Date();
+  const diffTime = targetDate.getTime() - now.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays;
+}
+
+function openNewAnnouncementModal() {
+  document.getElementById('modalAnnouncementTitle').textContent = '📢 發布分隊重要事項公告';
+  document.getElementById('editAnnouncementId').value = '';
+  document.getElementById('annTitle').value = '';
+  document.getElementById('annCategory').value = '一般隊務';
+  document.getElementById('annPriority').value = 'normal';
+  document.getElementById('annContent').value = '';
+  
+  const now = new Date();
+  const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const rocY = nextWeek.getFullYear() - 1911;
+  const mm = String(nextWeek.getMonth() + 1).padStart(2, '0');
+  const dd = String(nextWeek.getDate()).padStart(2, '0');
+  document.getElementById('annEndDate').value = `${rocY}-${mm}-${dd}`;
+  document.getElementById('annIsPinned').checked = false;
+  document.getElementById('btnSubmitAnnouncementText').textContent = '📢 確認發布公告';
+
+  document.getElementById('modalNewAnnouncement')?.classList.add('open');
+}
+
+function openEditAnnouncementModal(id) {
+  const ann = announcements.find(a => a.id === id);
+  if (!ann) return;
+
+  document.getElementById('modalAnnouncementTitle').textContent = '✏️ 編輯分隊公告與期限';
+  document.getElementById('editAnnouncementId').value = ann.id;
+  document.getElementById('annTitle').value = ann.title || '';
+  document.getElementById('annCategory').value = ann.category || '一般隊務';
+  document.getElementById('annPriority').value = ann.priority || 'normal';
+  document.getElementById('annContent').value = ann.content || '';
+  document.getElementById('annEndDate').value = ann.endDate || '';
+  document.getElementById('annIsPinned').checked = !!ann.isPinned;
+  document.getElementById('btnSubmitAnnouncementText').textContent = '💾 儲存變更';
+
+  document.getElementById('modalNewAnnouncement')?.classList.add('open');
+}
+
+function renderAnnouncements() {
+  const container = document.getElementById('announcementListContainer');
+  const badge = document.getElementById('announcementActiveBadge');
+  const btnNew = document.getElementById('btnOpenNewAnnouncementModal');
+  const lblHistory = document.getElementById('lblToggleHistory');
+
+  if (btnNew) {
+    btnNew.style.display = isSuperAdmin() ? 'inline-flex' : 'none';
+  }
+
+  if (lblHistory) {
+    lblHistory.textContent = showHistoryAnnouncements ? '🔙 返回有效公告' : '📜 查看歷史公告';
+  }
+
+  if (!container) return;
+
+  const activeList = announcements.filter(a => isAnnouncementActive(a));
+  
+  if (badge) {
+    badge.textContent = `${activeList.length} 則有效公告`;
+    badge.style.background = activeList.length > 0 ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.05)';
+    badge.style.color = activeList.length > 0 ? '#38bdf8' : 'var(--text-dim)';
+  }
+
+  let displayList = showHistoryAnnouncements ? [...announcements] : [...activeList];
+
+  // 排序：置頂優先，接著依建立時間新到舊
+  displayList.sort((a, b) => {
+    if (a.isPinned && !b.isPinned) return -1;
+    if (!a.isPinned && b.isPinned) return 1;
+    return (b.createdAt || 0) - (a.createdAt || 0);
+  });
+
+  if (displayList.length === 0) {
+    container.innerHTML = `
+      <div style="text-align: center; padding: 1.25rem 1rem; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px dashed rgba(255,255,255,0.08);">
+        <div style="font-size: 1.3rem; margin-bottom: 0.35rem;">🕊️</div>
+        <div style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">
+          ${showHistoryAnnouncements ? '尚無任何歷史公告紀錄' : '目前尚無待辦重要公告，祝全體協勤同仁執勤平安！'}
+        </div>
+        ${isSuperAdmin() && !showHistoryAnnouncements ? `
+          <button id="btnEmptyCreateAnn" class="btn-primary" style="margin-top: 0.75rem; font-size: 0.76rem; padding: 0.3rem 0.75rem; background: linear-gradient(135deg, #0284c7, #0369a1); border: none;">
+            <span>➕ 立即發布第一則分隊公告</span>
+          </button>
+        ` : ''}
+      </div>
+    `;
+
+    document.getElementById('btnEmptyCreateAnn')?.addEventListener('click', () => {
+      openNewAnnouncementModal();
+    });
+    return;
+  }
+
+  container.innerHTML = '';
+
+  displayList.forEach(ann => {
+    const isActive = isAnnouncementActive(ann);
+    const daysLeft = getDaysRemaining(ann.endDate);
+
+    let priorityBorder = '#38bdf8';
+    let priorityBg = 'rgba(56, 189, 248, 0.04)';
+    if (ann.priority === 'urgent') {
+      priorityBorder = '#ef4444';
+      priorityBg = 'rgba(239, 68, 68, 0.06)';
+    } else if (ann.priority === 'warning') {
+      priorityBorder = '#f59e0b';
+      priorityBg = 'rgba(245, 158, 11, 0.06)';
+    }
+
+    let deadlineBadgeHtml = '';
+    if (!isActive) {
+      deadlineBadgeHtml = `<span style="background: rgba(148, 163, 184, 0.2); color: #94a3b8; font-size: 0.72rem; padding: 2px 7px; border-radius: 99px;">⛔ 已過期 (${ann.endDate})</span>`;
+    } else if (daysLeft !== null) {
+      if (daysLeft <= 1) {
+        deadlineBadgeHtml = `<span style="background: rgba(239, 68, 68, 0.2); color: #f87171; font-size: 0.72rem; padding: 2px 7px; border-radius: 99px; font-weight: 600;">⚠️ 今日截止 (${ann.endDate})</span>`;
+      } else {
+        deadlineBadgeHtml = `<span style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 0.72rem; padding: 2px 7px; border-radius: 99px;">⏳ 剩餘 ${daysLeft} 天 (至 ${ann.endDate})</span>`;
+      }
+    }
+
+    const item = document.createElement('div');
+    item.className = 'glass-card';
+    item.style.cssText = `
+      padding: 0.9rem 1.1rem;
+      border-left: 4px solid ${priorityBorder};
+      background: ${priorityBg};
+      margin: 0;
+      transition: transform 0.2s, box-shadow 0.2s;
+    `;
+
+    item.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.4rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+          <span class="badge-role" style="font-size: 0.72rem; padding: 2px 7px; background: rgba(255,255,255,0.08);">${ann.category || '一般隊務'}</span>
+          ${ann.isPinned ? `<span style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; font-weight: 700;">📌 置頂</span>` : ''}
+          <strong style="font-size: 0.96rem; color: #f8fafc; letter-spacing: 0.3px;">${ann.title}</strong>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          ${deadlineBadgeHtml}
+          ${isSuperAdmin() ? `
+            <div style="display: flex; gap: 0.3rem;">
+              <button class="btn-admin-edit btn-edit-ann" data-id="${ann.id}" style="font-size: 0.72rem; padding: 2px 7px;" title="編輯公告內容或延長期限">✏️ 編輯</button>
+              <button class="btn-secondary btn-del-ann" data-id="${ann.id}" style="font-size: 0.72rem; padding: 2px 7px; color: #f87171; border-color: rgba(239, 68, 68, 0.3);" title="刪除此公告">🗑️ 刪除</button>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+      <div style="font-size: 0.85rem; line-height: 1.6; color: #cbd5e1; white-space: pre-wrap; margin-bottom: 0.45rem;">${ann.content}</div>
+      <div style="font-size: 0.72rem; color: var(--text-dim); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; border-top: 1px solid rgba(255,255,255,0.04); padding-top: 0.35rem;">
+        <span>✍️ 發布人：${ann.author || '分隊警消承辦人'}</span>
+        <span>🕒 發布時間：${ann.createdDateStr || ann.startDate || '—'}</span>
+      </div>
+    `;
+
+    container.appendChild(item);
+  });
+
+  if (isSuperAdmin()) {
+    container.querySelectorAll('.btn-edit-ann').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = e.currentTarget.getAttribute('data-id');
+        openEditAnnouncementModal(id);
+      });
+    });
+
+    container.querySelectorAll('.btn-del-ann').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = e.currentTarget.getAttribute('data-id');
+        const ann = announcements.find(a => a.id === id);
+        if (!ann) return;
+        if (confirm(`確定要刪除公告【${ann.title}】嗎？`)) {
+          announcements = announcements.filter(a => a.id !== id);
+          Store.set('announcements', announcements);
+          renderAnnouncements();
+          showToast('公告已順利刪除！', '🗑️');
+        }
+      });
+    });
+  }
+}
+
+function setupAnnouncementEvents() {
+  document.getElementById('btnOpenNewAnnouncementModal')?.addEventListener('click', () => {
+    openNewAnnouncementModal();
+  });
+
+  document.getElementById('btnToggleHistoryAnnouncements')?.addEventListener('click', () => {
+    showHistoryAnnouncements = !showHistoryAnnouncements;
+    renderAnnouncements();
+  });
+
+  // 快速期限按鈕
+  document.querySelectorAll('.btn-quick-ann-deadline').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const days = e.currentTarget.getAttribute('data-days');
+      const now = new Date();
+      let target = new Date();
+
+      if (days === 'end_of_month') {
+        target = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      } else {
+        const numDays = parseInt(days, 10) || 7;
+        target = new Date(now.getTime() + numDays * 24 * 60 * 60 * 1000);
+      }
+
+      const rocY = target.getFullYear() - 1911;
+      const mm = String(target.getMonth() + 1).padStart(2, '0');
+      const dd = String(target.getDate()).padStart(2, '0');
+      document.getElementById('annEndDate').value = `${rocY}-${mm}-${dd}`;
+    });
+  });
+
+  // 表單送出
+  document.getElementById('formNewAnnouncement')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const editId = document.getElementById('editAnnouncementId').value;
+    const title = document.getElementById('annTitle').value.trim();
+    const category = document.getElementById('annCategory').value;
+    const priority = document.getElementById('annPriority').value;
+    const content = document.getElementById('annContent').value.trim();
+    const endDate = document.getElementById('annEndDate').value.trim();
+    const isPinned = document.getElementById('annIsPinned').checked;
+
+    if (!title || !content || !endDate) {
+      alert('請填寫完整公告標題、詳細內容與顯示期限！');
+      return;
+    }
+
+    const todayStr = getCurrentRocDate();
+    const now = new Date();
+    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    if (editId) {
+      const ann = announcements.find(a => a.id === editId);
+      if (ann) {
+        ann.title = title;
+        ann.category = category;
+        ann.priority = priority;
+        ann.content = content;
+        ann.endDate = endDate;
+        ann.isPinned = isPinned;
+        showToast(`公告【${title}】已成功更新！`, '💾');
+      }
+    } else {
+      const newAnn = {
+        id: `ann-${Date.now()}`,
+        title,
+        category,
+        priority,
+        content,
+        startDate: todayStr,
+        endDate,
+        author: '分隊警消承辦人',
+        createdDateStr: `${todayStr} ${timeStr}`,
+        createdAt: Date.now(),
+        isPinned
+      };
+      announcements.unshift(newAnn);
+      showToast(`重要公告【${title}】已成功發布！有效期限至 ${endDate} 止`, '📢');
+    }
+
+    Store.set('announcements', announcements);
+    document.getElementById('modalNewAnnouncement')?.classList.remove('open');
+    renderAnnouncements();
+    playFeedbackSound('success');
+  });
+}
+
 function updateAllViews() {
   updateUserNavbarUi();
   updateDutyHero();
   updatePersonalSummary();
+  renderAnnouncements();
   renderRecentAttendance();
   renderDispatchList();
   renderBadges();
@@ -4608,6 +4899,9 @@ function updateUserNavbarUi() {
     }
 
     // 承辦人專屬介面連動
+    const btnNewAnn = document.getElementById('btnOpenNewAnnouncementModal');
+    if (btnNewAnn) btnNewAnn.style.display = isAdm ? 'inline-flex' : 'none';
+
     if (isAdm) {
       if (adminWrapper) adminWrapper.style.display = 'flex';
       if (adminBanner) adminBanner.style.display = 'flex';
@@ -4619,6 +4913,9 @@ function updateUserNavbarUi() {
     }
   } else {
     // 尚未登入狀態
+    const btnNewAnn = document.getElementById('btnOpenNewAnnouncementModal');
+    if (btnNewAnn) btnNewAnn.style.display = 'none';
+
     if (badgeWrapper) badgeWrapper.style.display = 'none';
     if (unauthWrapper) unauthWrapper.style.display = 'flex';
     if (adminWrapper) adminWrapper.style.display = 'none';
@@ -4991,6 +5288,7 @@ document.addEventListener('DOMContentLoaded', () => {
   populateShiftDatesDropdown();
   setupPunchEvents();
   setupModals();
+  setupAnnouncementEvents();
   setupExcelExport();
   setupDeviceToggle();
   setupCalendarControls();
