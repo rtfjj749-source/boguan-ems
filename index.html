@@ -407,7 +407,12 @@
 
           <!-- 一鍵清空排班 (測試用) -->
           <button id="btnClearAllShiftsTest" class="btn-secondary" style="padding: 0.4rem 0.75rem; font-size: 0.82rem; border-color: rgba(239, 68, 68, 0.4); color: #f87171;" title="清空所有排班資料以利乾淨測試">
-            <span>🧹 清空排班 (測試)</span>
+            <span>🧹 清空排班</span>
+          </button>
+
+          <!-- 一鍵清空全系統測試資料 (真實運作前重置) -->
+          <button id="btnClearAllTestData" class="btn-secondary" style="padding: 0.4rem 0.75rem; font-size: 0.82rem; border-color: rgba(239, 68, 68, 0.6); color: #f87171;" title="清空全系統所有測試紀錄（出勤、簽到退、排班與同仁戰績歸零）">
+            <span>🗑️ 清空所有測試資料</span>
           </button>
         </div>
       </div>
@@ -689,10 +694,10 @@
             <span style="font-size: 1.2rem;">🚑</span>
           </div>
           <div style="font-size: 1.8rem; font-weight: 800; font-family: var(--font-display); color: #34d399;" id="dashKpiDispatches">
-            54 趟 / 51 人
+            0 趟 / 0 人
           </div>
-          <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.35rem;">
-            空跑案件：<strong>3 趟</strong> (5.6%) ｜ 日均出勤：<strong>1.74 趟</strong>
+          <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.35rem;" id="dashKpiDispatchesDetail">
+            空跑案件：<strong>0 趟</strong> (0%) ｜ 日均出勤：<strong>0.00 趟</strong>
           </div>
           <div style="font-size: 0.72rem; color: #10b981; margin-top: 0.5rem; font-weight: 600;">
             ✔ 救護出勤紀錄對齊消防署公文
@@ -706,10 +711,10 @@
             <span style="font-size: 1.2rem;">🌟</span>
           </div>
           <div style="font-size: 1.8rem; font-weight: 800; font-family: var(--font-display); color: #fbbf24;" id="dashKpiRosc">
-            7 件 ROSC
+            0 件 ROSC
           </div>
-          <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.35rem;">
-            12-Lead 心電圖到院前傳輸：<strong>45 件</strong>
+          <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.35rem;" id="dashKpiEcg">
+            12-Lead 心電圖到院前傳輸：<strong>0 件</strong>
           </div>
           <div style="font-size: 0.72rem; color: #fbbf24; margin-top: 0.5rem; font-weight: 600;">
             📈 到院前急救成效卓著
@@ -722,11 +727,11 @@
             <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">排班規範合規率與管制</span>
             <span style="font-size: 1.2rem;">👮</span>
           </div>
-          <div style="font-size: 1.8rem; font-weight: 800; font-family: var(--font-display); color: #f87171;" id="dashKpiCompliance">
-            91.7%
+          <div style="font-size: 1.8rem; font-weight: 800; font-family: var(--font-display); color: #34d399;" id="dashKpiCompliance">
+            100%
           </div>
-          <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.35rem;">
-            合規隊員：<strong>11 位</strong> ｜ 處分管制期：<strong style="color: #ef4444;">1 位 (2個月)</strong>
+          <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.35rem;" id="dashKpiComplianceDetail">
+            合規隊員：<strong>54 位</strong> ｜ 處分管制期：<strong style="color: #10b981;">0 位</strong>
           </div>
           <div style="font-size: 0.72rem; color: #38bdf8; margin-top: 0.5rem; font-weight: 600;">
             ⚖️ 嚴格執行三階段超額處置機制

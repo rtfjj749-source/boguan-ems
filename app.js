@@ -53,27 +53,28 @@ function syncOfficialMembers(storedList) {
   });
 }
 
+// 一次性全面清空舊版測試資料快取（出勤、排班、簽到退、取消日誌、同仁歷史數據全歸零）
+if (!Store.get('clean_data_reset_v6')) {
+  Store.set('attendance', []);
+  Store.set('dispatches', []);
+  Store.set('shifts', []);
+  Store.set('cancellation_logs', []);
+  Store.set('activeDuty', null);
+  Store.set('members', INITIAL_MEMBERS);
+  Store.set('clean_data_reset_v6', true);
+}
+
 let members = syncOfficialMembers(Store.get('members', INITIAL_MEMBERS));
 Store.set('members', members);
-let attendance = Store.get('attendance', INITIAL_ATTENDANCE).map(a => {
-  if (a.note && (a.note.includes('91車') || a.note.includes('92車'))) {
-    return { ...a, note: a.note.replace(/9[12]車/g, '救護協勤') };
-  }
-  return a;
-});
+
+let attendance = Store.get('attendance', INITIAL_ATTENDANCE);
 Store.set('attendance', attendance);
-if (!Store.get('dispatches_cleared_by_user_req_v2')) {
-  Store.set('dispatches', []);
-  Store.set('dispatches_cleared_by_user_req_v2', true);
-}
+
 let dispatches = Store.get('dispatches', INITIAL_DISPATCHES);
-// 清空預定排班以利乾淨測試 (清除舊版 localStorage 快取)
-if (!Store.get('shifts_cleared_for_testing_v3')) {
-  Store.set('shifts', []);
-  Store.set('shifts_cleared_for_testing_v3', true);
-}
+Store.set('dispatches', dispatches);
+
 let shifts = Store.get('shifts', INITIAL_SHIFTS)
-  .filter(s => s.memberName && s.status !== '缺協勤') // 自動清理取消後遺留的空缺或缺協勤班次（不留缺額警示）
+  .filter(s => s.memberName && s.status !== '缺協勤')
   .map(s => {
     let v = s.vehicle;
     if (!v || v === '博館91' || v === '博館92' || v.includes('91') || v.includes('92')) {
@@ -82,21 +83,12 @@ let shifts = Store.get('shifts', INITIAL_SHIFTS)
     return { ...s, vehicle: v };
   });
 Store.set('shifts', shifts);
+
 let currentAuthUser = Store.get('current_auth_user', null);
 let currentMemberId = currentAuthUser ? currentAuthUser.memberId : null;
-let activeDuty = Store.get('activeDuty', null); // { memberId, startTime: timestamp, dateStr }
-let cancellationLogs = Store.get('cancellation_logs', [
-  {
-    id: 'can-1',
-    shiftId: 's-mock',
-    date: '115-10-06',
-    period: '18:00-23:00',
-    vehicle: '救護協勤',
-    memberName: '韓寧',
-    reason: '臨時工作加班 / 公司緊急公務',
-    timestamp: '17:20'
-  }
-]);
+let activeDuty = Store.get('activeDuty', null);
+let cancellationLogs = Store.get('cancellation_logs', []);
+Store.set('cancellation_logs', cancellationLogs);
 
 // ==========================================
 // 1.1 Supabase 雲端客戶端與即時同步引擎
@@ -2047,7 +2039,47 @@ function setupCalendarControls() {
         }
       }
       renderSchedule();
-      showToast('排班表已完全清空，可開始乾淨測試！', '🧹');
+    }
+  });
+
+  // 一鍵清空全系統所有測試資料（包括出勤、簽到退、排班與戰績歸零）
+  document.getElementById('btnClearAllTestData')?.addEventListener('click', async () => {
+    if (confirm('🗑️ 確定要清空全系統所有的測試資料嗎？\n\n將執行以下重置：\n1. 清空所有【簽到退/協勤打卡】紀錄\n2. 清空所有【緊急救護出勤】案件\n3. 清空全月【預約排班表】\n4. 清空所有【臨時取消排班】日誌\n5. 全體 54 位義消同仁的時數、出勤趟數、急救戰績 (ROSC/ECG/IV) 全部歸零\n6. 解除所有管制處分\n\n（義消名冊中的姓名、電話、證號與編組維持不變）')) {
+      shifts = [];
+      Store.set('shifts', []);
+      attendance = [];
+      Store.set('attendance', []);
+      dispatches = [];
+      Store.set('dispatches', []);
+      cancellationLogs = [];
+      Store.set('cancellation_logs', []);
+      activeDuty = null;
+      Store.set('activeDuty', null);
+
+      members = INITIAL_MEMBERS.map(m => ({
+        ...m,
+        totalHours: 0.0,
+        totalDispatches: 0,
+        roscCount: 0,
+        ecgCount: 0,
+        ivCount: 0,
+        isRestricted: false,
+        restrictionUntil: null,
+        makeupTrainingStatus: 'eligible'
+      }));
+      Store.set('members', members);
+
+      if (supabaseClient) {
+        try {
+          await supabaseClient.from('shifts').delete().neq('id', '');
+        } catch (e) {
+          console.warn('Supabase delete all shifts failed:', e);
+        }
+      }
+
+      updateAllViews();
+      renderSchedule();
+      showToast('所有測試資料已完全清空，系統數據已歸零！', '🧹');
     }
   });
 
@@ -2172,17 +2204,35 @@ function renderOfficerExecutiveDashboard() {
   const totalPat = dispatches.reduce((acc, d) => acc + (d.patientCount || 0), 0);
   const elDisp = document.getElementById('dashKpiDispatches');
   if (elDisp) elDisp.textContent = `${totalDisp} 趟 / ${totalPat} 人`;
+  const elDispDetail = document.getElementById('dashKpiDispatchesDetail');
+  if (elDispDetail) {
+    const dryRuns = dispatches.filter(d => (d.patientCount || 0) === 0 || (d.resultType && d.resultType.includes('未送醫'))).length;
+    const dryRate = totalDisp > 0 ? ((dryRuns / totalDisp) * 100).toFixed(1) : '0';
+    const avgPerDay = (totalDisp / 31).toFixed(2);
+    elDispDetail.innerHTML = `空跑案件：<strong>${dryRuns} 趟</strong> (${dryRate}%) ｜ 日均出勤：<strong>${avgPerDay} 趟</strong>`;
+  }
 
-  // ROSC count
+  // ROSC & ECG
   const roscCount = members.reduce((sum, m) => sum + (Number(m.roscCount) || 0), 0);
   const elRosc = document.getElementById('dashKpiRosc');
   if (elRosc) elRosc.textContent = `${roscCount} 件 ROSC`;
+  const ecgCount = members.reduce((sum, m) => sum + (Number(m.ecgCount) || 0), 0);
+  const elEcg = document.getElementById('dashKpiEcg');
+  if (elEcg) elEcg.innerHTML = `12-Lead 心電圖到院前傳輸：<strong>${ecgCount} 件</strong>`;
 
   // Compliance
   const restricted = members.filter(m => m.isRestricted).length;
   const compRate = members.length > 0 ? (((members.length - restricted) / members.length) * 100).toFixed(1) : '100';
   const elComp = document.getElementById('dashKpiCompliance');
-  if (elComp) elComp.textContent = `${compRate}%`;
+  if (elComp) {
+    elComp.textContent = `${compRate}%`;
+    elComp.style.color = restricted > 0 ? '#f87171' : '#34d399';
+  }
+  const elCompDetail = document.getElementById('dashKpiComplianceDetail');
+  if (elCompDetail) {
+    const compCount = members.length - restricted;
+    elCompDetail.innerHTML = `合規隊員：<strong>${compCount} 位</strong> ｜ 處分管制期：<strong style="color: ${restricted > 0 ? '#ef4444' : '#10b981'};">${restricted} 位</strong>`;
+  }
 
   // Fill Table
   const tbody = document.getElementById('dashOfficerTableTbody');
